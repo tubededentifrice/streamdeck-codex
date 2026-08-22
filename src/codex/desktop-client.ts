@@ -407,6 +407,7 @@ export class CodexDesktopClient {
             typeof message.sourceClientId === "string"
               ? message.sourceClientId
               : undefined;
+          if (sourceClientId === this.#clientId) continue;
           if (!this.#selectionSourceClientId && sourceClientId)
             this.#selectionSourceClientId = sourceClientId;
           const fromSelectionSource =

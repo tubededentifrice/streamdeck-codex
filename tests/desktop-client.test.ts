@@ -76,6 +76,8 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
           method: string;
           params?: { conversationId?: string; threadSettings?: unknown };
           requestId: string;
+          sourceClientId?: string;
+          type?: string;
         };
         buffer = buffer.subarray(length + 4);
         if (request.method === "initialize") {
@@ -127,6 +129,11 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
               type: "response",
             }),
           );
+        } else if (
+          request.method === "thread-stream-following-changed" &&
+          request.type === "broadcast"
+        ) {
+          socket.write(frame({ ...request, version: 1 }));
         }
       }
     });
@@ -452,6 +459,26 @@ describe("Codex desktop client", () => {
     await expect(client.readState()).resolves.toMatchObject({
       model: "gpt-5.6-terra",
       threadId: THREAD_B,
+    });
+    client.disconnect();
+  });
+
+  it("ignores its own restored-route event before a UI selection", async () => {
+    const router = await fakeRouter(-1);
+    const client = new CodexDesktopClient(router.home);
+    client.restoreRoute({
+      hostId: "remote-ssh-discovered:dev",
+      threadId: THREAD_B,
+    });
+    await client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    router.announce(THREAD_A, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toMatchObject({
+      hostId: "local",
+      threadId: THREAD_A,
     });
     client.disconnect();
   });

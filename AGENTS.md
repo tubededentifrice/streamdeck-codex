@@ -31,6 +31,9 @@
 - Use package scripts for repeatable build, test, lint, and format tasks.
 - Validate the plug-in with the Stream Deck CLI after manifest or bundle
   changes.
+- Before each completed-work commit, rebuild the plug-in and restart the linked
+  local Stream Deck plug-in. The local Stream Deck must run the new bundle when
+  the commit is complete.
 - Do not commit generated `bin/`, log, dependency, coverage, or packaged plug-in
   files.
 - Do not add secrets or local Codex data to the repository.
