@@ -14,6 +14,7 @@ type Router = {
   close: () => Promise<void>;
   home: string;
   select: (threadId: string) => void;
+  setState: (threadId: string, model: string, effort: string) => void;
   snapshot: (
     threadId: string,
     options?: {
@@ -29,7 +30,9 @@ type Router = {
 type RemoteRouter = {
   close: () => Promise<void>;
   home: string;
+  setStoredState: (model: string, effort: string) => void;
   setState: (model: string, effort: string) => void;
+  statusRequestCount: () => number;
   updateTargets: () => Array<string | undefined>;
 };
 
@@ -230,6 +233,13 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
     close,
     home,
     select,
+    setState: (threadId, model, effort) => {
+      database
+        .prepare(
+          "UPDATE threads SET model = ?, reasoning_effort = ? WHERE id = ?",
+        )
+        .run(model, effort, threadId);
+    },
     snapshot,
     updateCount: () => updates,
   };
@@ -249,7 +259,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
   const hostId = "remote-ssh-discovered:dev";
   let model = "gpt-5.6-luna";
   let effort = "high";
-  let sentSnapshot = false;
+  let statusRequests = 0;
   const targets: Array<string | undefined> = [];
   let activeSocket: net.Socket | undefined;
 
@@ -265,8 +275,6 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     );
   };
   const sendSnapshot = (socket: net.Socket) => {
-    if (sentSnapshot) return;
-    sentSnapshot = true;
     socket.write(
       frame({
         method: "thread-stream-state-changed",
@@ -336,6 +344,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         } else if (
           message.method === "thread-stream-following-status-requested"
         ) {
+          statusRequests += 1;
           sendSnapshot(socket);
         } else if (
           message.method === "thread-follower-update-thread-settings" &&
@@ -372,6 +381,10 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
   return {
     close,
     home,
+    setStoredState: (nextModel, nextEffort) => {
+      model = nextModel;
+      effort = nextEffort;
+    },
     setState: (nextModel, nextEffort) => {
       model = nextModel;
       effort = nextEffort;
@@ -395,6 +408,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         }),
       );
     },
+    statusRequestCount: () => statusRequests,
     updateTargets: () => targets,
   };
 }
@@ -567,6 +581,23 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
+  it("refreshes a local task from the database after a live snapshot", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+    router.snapshot(THREAD_A);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    router.setState(THREAD_A, "gpt-5.6-luna", "high");
+
+    await expect(client.readState()).resolves.toMatchObject({
+      effort: "high",
+      model: "gpt-5.6-luna",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
   it("reads and updates a selected remote task through its live owner", async () => {
     const router = await fakeRemoteRouter();
     const applied: unknown[] = [];
@@ -618,6 +649,30 @@ describe("Codex desktop client", () => {
       effort: "high",
       model: "gpt-5.6-luna",
     });
+    client.disconnect();
+  });
+
+  it("requests a fresh remote snapshot during a periodic read", async () => {
+    const router = await fakeRemoteRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+    let changes = 0;
+    client.onChange(() => {
+      changes += 1;
+    });
+    const initialRequests = router.statusRequestCount();
+    router.setStoredState("gpt-5.6-sol", "medium");
+
+    await client.readState();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(router.statusRequestCount()).toBeGreaterThan(initialRequests);
+    await expect(client.readState()).resolves.toMatchObject({
+      effort: "medium",
+      model: "gpt-5.6-sol",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(changes).toBe(1);
     client.disconnect();
   });
 });

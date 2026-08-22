@@ -105,6 +105,10 @@ export class CodexDesktopClient {
   async readState(): Promise<CodexState> {
     await this.connect();
     const route = await this.#selectedRoute();
+    if (route.hostId === "local") {
+      const stored = this.#readLocalState(route.threadId);
+      if (stored) return stored;
+    }
     const live = await this.#readLiveState(
       route,
       route.hostId === "local" ? 5 : 25,
@@ -112,23 +116,22 @@ export class CodexDesktopClient {
     if (live) return live;
     if (route.hostId !== "local")
       throw new Error("Codex did not provide the selected remote task state.");
+    throw new Error("The selected task has no saved model and thinking level.");
+  }
+
+  #readLocalState(threadId: string): CodexState | undefined {
     const database = this.#getDatabase();
     const row = database
       .prepare("SELECT model, reasoning_effort FROM threads WHERE id = ?")
-      .get(route.threadId) as
+      .get(threadId) as
       { model?: unknown; reasoning_effort?: unknown } | undefined;
-    if (!row || !isStateValue(row.model)) {
-      throw new Error(
-        "The selected task has no saved model and thinking level.",
-      );
-    }
-    if (!isStateValue(row.reasoning_effort))
-      throw new Error("The selected task has an invalid thinking level.");
+    if (!row || !isStateValue(row.model) || !isStateValue(row.reasoning_effort))
+      return undefined;
     return {
       effort: row.reasoning_effort,
-      hostId: route.hostId,
+      hostId: "local",
       model: row.model,
-      threadId: route.threadId,
+      threadId,
     };
   }
 
@@ -279,8 +282,8 @@ export class CodexDesktopClient {
   ): Promise<CodexState | undefined> {
     const key = this.#routeKey(route.hostId, route.threadId);
     let state = this.#remoteStates.get(key);
+    this.#requestThreadStatus(route);
     if (!state) {
-      this.#requestThreadStatus(route);
       for (let attempt = 0; attempt < attempts && !state; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
         state = this.#remoteStates.get(key);
@@ -586,7 +589,8 @@ export class CodexDesktopClient {
           state.sideConversation === true
             ? this.#parentRoute(state.sideConversationParentNavigationPath)
             : undefined;
-        this.#remoteStates.set(key, {
+        const previous = this.#remoteStates.get(key);
+        const next = {
           effort,
           hostId: params.hostId,
           model,
@@ -594,7 +598,9 @@ export class CodexDesktopClient {
           relayClientId: message.sourceClientId,
           sideConversation: state.sideConversation === true,
           threadId: params.conversationId,
-        });
+        };
+        this.#remoteStates.set(key, next);
+        let routeChanged = false;
         if (state.sideConversation === true && this.#activeRouteKey === key) {
           const parent = parentRoute;
           if (parent?.hostId === params.hostId) {
@@ -603,9 +609,20 @@ export class CodexDesktopClient {
             this.#activeRouteKey = parentKey;
             this.#routeChanged(parent);
             this.#requestThreadStatus(parent);
+            routeChanged = true;
           }
         }
-        this.#emitChange();
+        if (
+          routeChanged ||
+          !previous ||
+          previous.model !== next.model ||
+          previous.effort !== next.effort ||
+          previous.relayClientId !== next.relayClientId ||
+          previous.sideConversation !== next.sideConversation ||
+          previous.parentRoute?.hostId !== next.parentRoute?.hostId ||
+          previous.parentRoute?.threadId !== next.parentRoute?.threadId
+        )
+          this.#emitChange();
       }
       return;
     }
