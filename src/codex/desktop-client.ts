@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type { CodexState } from "../domain/settings";
+import { sanitizeCodexRoute, type CodexRoute } from "../domain/route";
 import { updateRemoteTaskThroughSsh } from "./remote-app-server";
 
 const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
@@ -38,16 +39,18 @@ function isStateValue(value: unknown): value is string {
 export class CodexDesktopClient {
   readonly #codexHome: string;
   readonly #remoteUpdater: RemoteUpdater;
+  readonly #routeChanged: (route: CodexRoute | undefined) => void;
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #remoteStates = new Map<
     string,
     CodexState & { relayClientId: string }
   >();
-  readonly #selectedRoutes = new Map<
+  readonly #followedRoutes = new Map<
     string,
     { hostId: string; threadId: string }
   >();
+  #activeRouteKey: string | undefined;
   #buffer = Buffer.alloc(0);
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
@@ -58,9 +61,19 @@ export class CodexDesktopClient {
   constructor(
     codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
     remoteUpdater: RemoteUpdater = updateRemoteTaskThroughSsh,
+    routeChanged: (route: CodexRoute | undefined) => void = () => undefined,
   ) {
     this.#codexHome = codexHome;
     this.#remoteUpdater = remoteUpdater;
+    this.#routeChanged = routeChanged;
+  }
+
+  restoreRoute(value: unknown): void {
+    const route = sanitizeCodexRoute(value);
+    if (!route || this.#activeRouteKey) return;
+    const key = this.#routeKey(route.hostId, route.threadId);
+    this.#followedRoutes.set(key, route);
+    this.#activeRouteKey = key;
   }
 
   onChange(listener: () => void): () => void {
@@ -69,7 +82,7 @@ export class CodexDesktopClient {
   }
 
   disconnect(): void {
-    this.#close(new Error("Codex desktop connection closed."));
+    this.#close(new Error("Codex desktop connection closed."), false);
     this.#database?.close();
     this.#database = undefined;
   }
@@ -142,7 +155,6 @@ export class CodexDesktopClient {
     }
 
     if (before.hostId !== "local") {
-      this.#remoteStates.delete(this.#routeKey(before.hostId, before.threadId));
       this.#requestRemoteStatus(before);
     }
 
@@ -209,6 +221,11 @@ export class CodexDesktopClient {
       if (typeof result?.clientId !== "string")
         throw new Error("Codex desktop did not return a client ID.");
       this.#clientId = result.clientId;
+      const restored = this.#activeRouteKey
+        ? this.#followedRoutes.get(this.#activeRouteKey)
+        : undefined;
+      if (restored && restored.hostId !== "local")
+        this.#followRemote(restored, true);
     } catch (error) {
       if (this.#socket === socket)
         this.#close(
@@ -222,8 +239,10 @@ export class CodexDesktopClient {
 
   async #selectedRoute(): Promise<{ hostId: string; threadId: string }> {
     for (let attempt = 0; attempt < 25; attempt += 1) {
-      const selected = [...this.#selectedRoutes.values()];
-      if (selected.length === 1) return selected[0];
+      const selected = this.#activeRouteKey
+        ? this.#followedRoutes.get(this.#activeRouteKey)
+        : undefined;
+      if (selected) return selected;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error("Select a task in the Codex desktop app.");
@@ -375,18 +394,30 @@ export class CodexDesktopClient {
             };
             const key = this.#routeKey(route.hostId, route.threadId);
             if (params.following) {
-              for (const [selectedKey, selectedRoute] of this.#selectedRoutes) {
-                if (selectedKey !== key && selectedRoute.hostId !== "local")
-                  this.#followRemote(selectedRoute, false);
-              }
-              this.#selectedRoutes.clear();
-              this.#remoteStates.delete(key);
-              this.#selectedRoutes.set(key, route);
+              if (this.#followedRoutes.has(key)) continue;
+              const previous = this.#activeRouteKey
+                ? this.#followedRoutes.get(this.#activeRouteKey)
+                : undefined;
+              if (previous && previous.hostId !== "local")
+                this.#followRemote(previous, false);
+              this.#followedRoutes.set(key, route);
+              this.#activeRouteKey = key;
+              this.#remoteStates.clear();
+              this.#routeChanged(route);
               if (route.hostId !== "local") this.#followRemote(route, true);
             } else {
-              this.#selectedRoutes.delete(key);
+              if (!this.#followedRoutes.delete(key)) continue;
               this.#remoteStates.delete(key);
               if (route.hostId !== "local") this.#followRemote(route, false);
+              if (this.#activeRouteKey === key) {
+                const fallback = [...this.#followedRoutes.entries()].at(-1);
+                this.#activeRouteKey = fallback?.[0];
+                this.#routeChanged(fallback?.[1]);
+                if (fallback && fallback[1].hostId !== "local") {
+                  this.#remoteStates.clear();
+                  this.#followRemote(fallback[1], true);
+                }
+              }
             }
             this.#emitChange();
           }
@@ -418,16 +449,22 @@ export class CodexDesktopClient {
     }
   }
 
-  #close(error: Error): void {
+  #close(error: Error, preserveRoute = true): void {
+    const rememberedRoute =
+      preserveRoute && this.#activeRouteKey
+        ? this.#followedRoutes.get(this.#activeRouteKey)
+        : undefined;
     const socket = this.#socket;
     const hadConnection = Boolean(
-      socket || this.#clientId || this.#selectedRoutes.size > 0,
+      socket || this.#clientId || this.#followedRoutes.size > 0,
     );
     this.#socket = undefined;
     this.#clientId = undefined;
     this.#selectionSourceClientId = undefined;
     this.#buffer = Buffer.alloc(0);
-    this.#selectedRoutes.clear();
+    this.#activeRouteKey = undefined;
+    this.#followedRoutes.clear();
+    this.restoreRoute(rememberedRoute);
     this.#remoteStates.clear();
     if (socket && !socket.destroyed) socket.destroy();
     for (const pending of this.#pending.values()) {
@@ -476,7 +513,7 @@ export class CodexDesktopClient {
     )
       return;
     const key = this.#routeKey(params.hostId, params.conversationId);
-    if (!this.#selectedRoutes.has(key)) return;
+    if (key !== this.#activeRouteKey) return;
     const change = params.change as {
       conversationState?: unknown;
       patches?: unknown;

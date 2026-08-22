@@ -20,6 +20,10 @@ require host settings. Codex interfaces used for task control can change between
 releases. Treat this integration as a compatibility layer, not as a stable public
 Codex API.
 
+The plug-in saves the last validated selected-task route in Stream Deck global
+settings. This lets it restore the key display after a plug-in or Codex IPC
+restart, even when Codex does not replay the current selection.
+
 A successful change applies to the selected task's next turn. It does not
 change a response that Codex is already generating.
 
@@ -56,7 +60,8 @@ Remote setting changes use the SSH host alias that Codex reports for the
 selected task. The plug-in opens `codex app-server proxy` through the existing
 SSH configuration. SSH must work without an interactive password prompt, such
 as with an SSH key and agent. The plug-in validates the requested model and
-thinking level and verifies the saved task settings. It does not use
+thinking level. It verifies the saved task settings through Codex desktop IPC.
+It does not use
 Accessibility, Screen Recording, OCR, or UI clicks.
 
 ## Development setup

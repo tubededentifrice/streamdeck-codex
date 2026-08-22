@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CodexDesktopClient } from "../src/codex/desktop-client";
 
 type Router = {
+  announce: (threadId: string, following: boolean) => void;
   close: () => Promise<void>;
   home: string;
   select: (threadId: string) => void;
@@ -90,7 +91,7 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
               }),
             );
           if (selectionDelayMs > 0) setTimeout(sendSelection, selectionDelayMs);
-          else sendSelection();
+          else if (selectionDelayMs === 0) sendSelection();
         } else if (
           request.method === "thread-follower-update-thread-settings"
         ) {
@@ -154,6 +155,16 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
       ]),
     );
   };
+  const announce = (threadId: string, following: boolean) => {
+    activeSocket?.write(
+      frame({
+        method: "thread-stream-following-changed",
+        params: { conversationId: threadId, following, hostId: "local" },
+        sourceClientId: "desktop-ui-client",
+        version: 1,
+      }),
+    );
+  };
   const close = async () => {
     activeSocket?.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -161,7 +172,7 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
     fs.rmSync(home, { force: true, recursive: true });
   };
   cleanups.push(close);
-  return { close, home, select, updateCount: () => updates };
+  return { announce, close, home, select, updateCount: () => updates };
 }
 
 async function fakeRemoteRouter(): Promise<RemoteRouter> {
@@ -178,6 +189,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
   const hostId = "remote-ssh-discovered:dev";
   let model = "gpt-5.6-luna";
   let effort = "high";
+  let sentSnapshot = false;
   const targets: Array<string | undefined> = [];
   let activeSocket: net.Socket | undefined;
 
@@ -193,6 +205,8 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     );
   };
   const sendSnapshot = (socket: net.Socket) => {
+    if (sentSnapshot) return;
+    sentSnapshot = true;
     socket.write(
       frame({
         method: "thread-stream-state-changed",
@@ -301,6 +315,25 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     setState: (nextModel, nextEffort) => {
       model = nextModel;
       effort = nextEffort;
+      activeSocket?.write(
+        frame({
+          method: "thread-stream-state-changed",
+          params: {
+            change: {
+              patches: [
+                { path: ["latestModel"], value: model },
+                { path: ["latestReasoningEffort"], value: effort },
+              ],
+              type: "patches",
+            },
+            conversationId: THREAD_A,
+            hostId,
+          },
+          sourceClientId: relayClientId,
+          type: "broadcast",
+          version: 11,
+        }),
+      );
     },
     updateTargets: () => targets,
   };
@@ -353,6 +386,62 @@ describe("Codex desktop client", () => {
 
     await expect(client.readState()).resolves.toMatchObject({
       hostId: "local",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("restores the last valid route when Codex does not replay a selection", async () => {
+    const router = await fakeRouter(-1);
+    const client = new CodexDesktopClient(router.home);
+    client.restoreRoute({ hostId: "local", threadId: THREAD_B });
+
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-terra",
+      threadId: THREAD_B,
+    });
+    client.disconnect();
+  });
+
+  it("reports a new route for persistence", async () => {
+    const router = await fakeRouter();
+    const routes: unknown[] = [];
+    const client = new CodexDesktopClient(
+      router.home,
+      async () => undefined,
+      (route) => routes.push(route),
+    );
+    await client.readState();
+    router.announce(THREAD_B, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(routes.at(-1)).toEqual({ hostId: "local", threadId: THREAD_B });
+    client.disconnect();
+  });
+
+  it("ignores repeated selection events from another Codex window", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_B, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-terra",
+      threadId: THREAD_B,
+    });
+
+    router.announce(THREAD_A, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-terra",
+      threadId: THREAD_B,
+    });
+
+    router.announce(THREAD_B, false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
     client.disconnect();

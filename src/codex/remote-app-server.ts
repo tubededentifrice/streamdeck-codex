@@ -22,7 +22,7 @@ type SpawnSsh = typeof spawn;
 
 export type RemoteAppServerClient = {
   close: () => void;
-  updateAndVerify: (
+  update: (
     threadId: string,
     target: Pick<CodexState, "effort" | "model">,
   ) => Promise<void>;
@@ -69,18 +69,6 @@ function websocketFrame(opcode: number, payload = Buffer.alloc(0)): Buffer {
   for (let index = 0; index < payload.length; index += 1)
     masked[index] = payload[index] ^ mask[index % 4];
   return Buffer.concat([header, mask, masked]);
-}
-
-function compactState(value: unknown): { effort?: string; model?: string } {
-  if (!value || typeof value !== "object") return {};
-  const state = value as { model?: unknown; reasoningEffort?: unknown };
-  return {
-    effort:
-      typeof state.reasoningEffort === "string"
-        ? state.reasoningEffort
-        : undefined,
-    model: typeof state.model === "string" ? state.model : undefined,
-  };
 }
 
 export function sshAliasFromHostId(hostId: string): string {
@@ -186,7 +174,7 @@ export class SshAppServerClient implements RemoteAppServerClient {
     }
   }
 
-  async updateAndVerify(
+  async update(
     threadId: string,
     target: Pick<CodexState, "effort" | "model">,
   ): Promise<void> {
@@ -225,13 +213,6 @@ export class SshAppServerClient implements RemoteAppServerClient {
       model: target.model,
       threadId,
     });
-    const verified = compactState(
-      await this.#request("thread/resume", { excludeTurns: true, threadId }),
-    );
-    if (verified.model !== target.model || verified.effort !== target.effort)
-      throw new RemoteRequestRejectedError(
-        "The remote Codex App Server did not save the requested settings.",
-      );
   }
 
   close(): void {
@@ -449,7 +430,7 @@ export class RemoteTaskUpdater {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const client = await this.#client(host);
-        await client.updateAndVerify(current.threadId, target);
+        await client.update(current.threadId, target);
         this.#refreshIdleTimer(host, client);
         return;
       } catch (error) {

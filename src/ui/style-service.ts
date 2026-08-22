@@ -8,6 +8,7 @@ import {
   type PluginGlobalSettings,
   sanitizeCustomStyles,
 } from "../domain/styles";
+import { sanitizeCodexRoute, type CodexRoute } from "../domain/route";
 
 type StyleMessage =
   | { type: "styles/delete"; id?: unknown }
@@ -21,9 +22,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 class StyleService {
   readonly #listeners = new Set<() => void>();
   #settings: PluginGlobalSettings = {};
+  #writePromise: Promise<void> = Promise.resolve();
 
   get settings(): PluginGlobalSettings {
     return this.#settings;
+  }
+
+  get lastRoute(): CodexRoute | undefined {
+    return sanitizeCodexRoute(this.#settings.lastRoute);
   }
 
   onChange(listener: () => void): () => void {
@@ -62,6 +68,20 @@ class StyleService {
     }
   }
 
+  saveLastRoute(route: CodexRoute | undefined): Promise<void> {
+    const sanitized = sanitizeCodexRoute(route);
+    const current = this.lastRoute;
+    if (
+      current?.hostId === sanitized?.hostId &&
+      current?.threadId === sanitized?.threadId
+    )
+      return Promise.resolve();
+    return this.#updateSettings((settings) => ({
+      ...settings,
+      lastRoute: sanitized,
+    }));
+  }
+
   #apply(settings: PluginGlobalSettings): void {
     this.#settings = {
       ...settings,
@@ -71,13 +91,21 @@ class StyleService {
   }
 
   async #save(customStyles: KeyStyle[]): Promise<void> {
-    const settings: PluginGlobalSettings = {
-      ...this.#settings,
-      customStyles,
-    };
-    await streamDeck.settings.setGlobalSettings(settings);
-    this.#apply(settings);
+    await this.#updateSettings((settings) => ({ ...settings, customStyles }));
     await this.#sendCatalog();
+  }
+
+  #updateSettings(
+    update: (settings: PluginGlobalSettings) => PluginGlobalSettings,
+  ): Promise<void> {
+    this.#writePromise = this.#writePromise
+      .catch(() => undefined)
+      .then(async () => {
+        const settings = update(this.#settings);
+        await streamDeck.settings.setGlobalSettings(settings);
+        this.#apply(settings);
+      });
+    return this.#writePromise;
   }
 
   async #delete(id: unknown): Promise<void> {

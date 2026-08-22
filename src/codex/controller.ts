@@ -18,7 +18,11 @@ type VisibleAction = {
 };
 
 class CodexController {
-  readonly #client = new CodexDesktopClient();
+  readonly #client = new CodexDesktopClient(undefined, undefined, (route) => {
+    void styleService.saveLastRoute(route).catch(() => {
+      streamDeck.logger.error("Codex selected-task route could not be saved.");
+    });
+  });
   readonly #busy = new Set<string>();
   readonly #visible = new Map<string, VisibleAction>();
   #refreshPromise: Promise<void> | undefined;
@@ -26,6 +30,7 @@ class CodexController {
   #updatePromise: Promise<void> = Promise.resolve();
 
   start(): void {
+    this.#client.restoreRoute(styleService.lastRoute);
     this.#client.onChange(() => this.#refreshInBackground());
     styleService.onChange(() => this.#refreshInBackground());
     setInterval(() => this.#refreshInBackground(), 2000).unref();

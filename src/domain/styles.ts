@@ -12,6 +12,7 @@ export type KeyStyle = Readonly<{
 
 export type PluginGlobalSettings = JsonObject & {
   customStyles?: KeyStyle[];
+  lastRoute?: { hostId: string; threadId: string };
 };
 
 type StyledChoice = {

@@ -55,11 +55,11 @@ describe("remote Codex App Server", () => {
   });
 
   it("reuses one connection for the detected host", async () => {
-    const updateAndVerify = vi.fn(async () => undefined);
+    const update = vi.fn(async () => undefined);
     const close = vi.fn();
     const connect = vi.fn(async (): Promise<RemoteAppServerClient> => ({
       close,
-      updateAndVerify,
+      update,
     }));
     const updater = new RemoteTaskUpdater(connect);
 
@@ -71,12 +71,8 @@ describe("remote Codex App Server", () => {
 
     expect(connect).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalledWith("dev");
-    expect(updateAndVerify).toHaveBeenNthCalledWith(
-      1,
-      CURRENT.threadId,
-      TARGET,
-    );
-    expect(updateAndVerify).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenNthCalledWith(1, CURRENT.threadId, TARGET);
+    expect(update).toHaveBeenCalledTimes(2);
     updater.close();
     expect(close).toHaveBeenCalledOnce();
   });
@@ -88,13 +84,13 @@ describe("remote Codex App Server", () => {
       .fn<() => Promise<RemoteAppServerClient>>()
       .mockResolvedValueOnce({
         close: firstClose,
-        updateAndVerify: vi.fn(async () => {
+        update: vi.fn(async () => {
           throw new Error("connection closed");
         }),
       })
       .mockResolvedValueOnce({
         close: secondClose,
-        updateAndVerify: vi.fn(async () => undefined),
+        update: vi.fn(async () => undefined),
       });
     const updater = new RemoteTaskUpdater(connect);
 
