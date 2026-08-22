@@ -51,10 +51,19 @@ describe("key renderer", () => {
         },
         { effort: "medium", label: "Medium" },
         2,
+        {
+          backgroundColor: "#112233",
+          borderColor: "#445566",
+          fontColor: "#DDEEFF",
+          id: "custom:test",
+          name: "Test",
+        },
         "#ffffff",
       ),
     );
     expect(image).toContain('stroke="#ffffff"');
+    expect(image).toContain('fill="#112233"');
+    expect(image).toContain('fill="#DDEEFF"');
   });
 
   it("does not expose error details on the key", () => {
@@ -63,5 +72,17 @@ describe("key renderer", () => {
     );
     expect(image).toContain("CODEX OFFLINE");
     expect(image).not.toContain("/tmp/private");
+  });
+
+  it("shows a clear permission state for the native helper", () => {
+    for (const message of [
+      "Allow Codex Controls Helper in macOS Accessibility settings.",
+      "Allow Codex Controls Helper in macOS Screen Recording settings.",
+    ]) {
+      const image = decodeURIComponent(
+        renderError("preset", new Error(message)),
+      );
+      expect(image).toContain("ALLOW ACCESS");
+    }
   });
 });

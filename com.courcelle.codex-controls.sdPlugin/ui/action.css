@@ -38,6 +38,18 @@ p {
   grid-template-columns: 58px 1fr;
   margin: 5px 0;
 }
+.style-field {
+  align-items: center;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 58px 1fr 28px;
+  margin: 5px 0;
+}
+.swatch {
+  border-radius: 5px;
+  height: 25px;
+  width: 28px;
+}
 label {
   color: #d0d0d0;
   text-align: right;
@@ -82,4 +94,30 @@ button:disabled {
 #add {
   display: block;
   margin: 10px 0 0 auto;
+}
+#style-manager {
+  border-top: 1px solid #555;
+  margin-top: 14px;
+  padding-top: 10px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.manager-fields {
+  align-items: center;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 70px 1fr;
+  margin-top: 10px;
+}
+.manager-fields input[type="color"] {
+  height: 30px;
+  padding: 2px;
+  width: 100%;
+}
+#style-error {
+  color: #ff8b98;
+  margin: 8px 0 0;
+  min-height: 17px;
 }

@@ -65,7 +65,9 @@ For each changed path, check these areas.
 - Check file and socket ownership assumptions. Do not expose tokens, task
   content, local paths, or other sensitive data in logs or key images.
 - For remote tasks, use Codex desktop IPC only. Do not add SSH, host settings,
-  remote command execution, or global-default changes.
+  remote command execution, or global-default changes. If IPC is read-only for
+  a remote task, permit exact and verified macOS Accessibility control of the
+  Codex model menu.
 - Confirm that updates affect the selected task's next turn only.
 
 ### Stream Deck SDK
@@ -79,6 +81,8 @@ For each changed path, check these areas.
   image paths, and property-inspector paths.
 - Confirm that SVG or data-URL rendering is valid, escaped, bounded to the key,
   and readable for long labels and high-DPI devices.
+- Check custom color validation, global sharing, missing preset fallback, and
+  contrast for every built-in color preset.
 
 ### Extensibility and maintainability
 

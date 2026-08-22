@@ -14,6 +14,27 @@
       </p>
       <div id="choices" aria-live="polite"></div>
       <button id="add" type="button">Add value</button>
+      <details id="style-manager">
+        <summary>Manage custom colors</summary>
+        <div class="manager-fields">
+          <label for="custom-style">Preset</label>
+          <select id="custom-style"></select>
+          <label for="style-name">Name</label>
+          <input id="style-name" maxlength="32" placeholder="My colors" />
+          <label for="style-border">Border</label>
+          <input id="style-border" type="color" value="#38bdf8" />
+          <label for="style-background">Background</label>
+          <input id="style-background" type="color" value="#082f49" />
+          <label for="style-font">Font</label>
+          <input id="style-font" type="color" value="#f0f9ff" />
+        </div>
+        <div class="buttons">
+          <button id="style-new" type="button">Save new</button>
+          <button id="style-update" type="button">Update</button>
+          <button id="style-delete" type="button">Delete</button>
+        </div>
+        <p id="style-error" role="alert"></p>
+      </details>
     </main>
     <script src="action.js"></script>
   </body>

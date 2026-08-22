@@ -2,9 +2,18 @@ import type { JsonObject } from "@elgato/utils";
 
 export type ActionKind = "model" | "thinking" | "preset";
 
-export type ModelChoice = { label: string; model: string };
-export type ThinkingChoice = { effort: string; label: string };
-export type PresetChoice = { effort: string; label: string; model: string };
+export type ModelChoice = { label: string; model: string; styleId?: string };
+export type ThinkingChoice = {
+  effort: string;
+  label: string;
+  styleId?: string;
+};
+export type PresetChoice = {
+  effort: string;
+  label: string;
+  model: string;
+  styleId?: string;
+};
 
 export type ActionSettings = JsonObject & {
   models?: ModelChoice[];
@@ -20,22 +29,33 @@ export type CodexState = {
 };
 
 const DEFAULT_MODELS: ModelChoice[] = [
-  { label: "Sol", model: "gpt-5.6-sol" },
-  { label: "Luna", model: "gpt-5.6-luna" },
+  { label: "Sol", model: "gpt-5.6-sol", styleId: "builtin:ocean" },
+  { label: "Luna", model: "gpt-5.6-luna", styleId: "builtin:violet" },
 ];
 
 const DEFAULT_THINKING: ThinkingChoice[] = [
-  { effort: "medium", label: "Medium" },
-  { effort: "high", label: "High" },
+  { effort: "medium", label: "Medium", styleId: "builtin:amber" },
+  { effort: "high", label: "High", styleId: "builtin:rose" },
 ];
 
 const DEFAULT_PRESETS: PresetChoice[] = [
-  { effort: "medium", label: "Sol · Medium", model: "gpt-5.6-sol" },
-  { effort: "high", label: "Luna · High", model: "gpt-5.6-luna" },
+  {
+    effort: "medium",
+    label: "Sol · Medium",
+    model: "gpt-5.6-sol",
+    styleId: "builtin:ocean",
+  },
+  {
+    effort: "high",
+    label: "Luna · High",
+    model: "gpt-5.6-luna",
+    styleId: "builtin:violet",
+  },
 ];
 
 const MAX_CHOICES = 20;
 const VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const STYLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function clean(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -44,6 +64,11 @@ function clean(value: unknown, maxLength: number): string {
 function cleanValue(value: unknown): string {
   const result = clean(value, 128);
   return VALUE_PATTERN.test(result) ? result : "";
+}
+
+function cleanStyleId(value: unknown): string | undefined {
+  const result = clean(value, 128);
+  return STYLE_ID_PATTERN.test(result) ? result : undefined;
 }
 
 function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
@@ -87,6 +112,7 @@ export function choicesFor(
       .map((choice) => ({
         label: clean(choice?.label, 32),
         model: cleanValue(choice?.model),
+        styleId: cleanStyleId(choice?.styleId),
       }))
       .filter((choice) => choice.model)
       .map((choice) => ({ ...choice, label: choice.label || choice.model }));
@@ -101,6 +127,7 @@ export function choicesFor(
       .map((choice) => ({
         effort: cleanValue(choice?.effort),
         label: clean(choice?.label, 32),
+        styleId: cleanStyleId(choice?.styleId),
       }))
       .filter((choice) => choice.effort)
       .map((choice) => ({ ...choice, label: choice.label || choice.effort }));
@@ -115,6 +142,7 @@ export function choicesFor(
       effort: cleanValue(choice?.effort),
       label: clean(choice?.label, 32),
       model: cleanValue(choice?.model),
+      styleId: cleanStyleId(choice?.styleId),
     }))
     .filter((choice) => choice.model && choice.effort)
     .map((choice) => ({

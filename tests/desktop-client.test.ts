@@ -19,6 +19,7 @@ type Router = {
 type RemoteRouter = {
   close: () => Promise<void>;
   home: string;
+  setState: (model: string, effort: string) => void;
   updateTargets: () => Array<string | undefined>;
 };
 
@@ -173,7 +174,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     "CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT, reasoning_effort TEXT)",
   );
 
-  const ownerClientId = "remote-owner-client";
+  const relayClientId = "desktop-ui-client";
   const hostId = "remote-ssh-discovered:dev";
   let model = "gpt-5.6-luna";
   let effort = "high";
@@ -207,7 +208,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
           conversationId: THREAD_A,
           hostId,
         },
-        sourceClientId: ownerClientId,
+        sourceClientId: relayClientId,
         type: "broadcast",
         version: 11,
       }),
@@ -263,18 +264,6 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         ) {
           sendSnapshot(socket);
         } else if (
-          message.method === "thread-owner-discovery" &&
-          message.requestId
-        ) {
-          socket.write(
-            frame({
-              handledByClientId: ownerClientId,
-              requestId: message.requestId,
-              resultType: "success",
-              type: "response",
-            }),
-          );
-        } else if (
           message.method === "thread-follower-update-thread-settings" &&
           message.requestId
         ) {
@@ -306,7 +295,15 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     fs.rmSync(home, { force: true, recursive: true });
   };
   cleanups.push(close);
-  return { close, home, updateTargets: () => targets };
+  return {
+    close,
+    home,
+    setState: (nextModel, nextEffort) => {
+      model = nextModel;
+      effort = nextEffort;
+    },
+    updateTargets: () => targets,
+  };
 }
 
 afterEach(async () => {
@@ -363,7 +360,14 @@ describe("Codex desktop client", () => {
 
   it("reads and updates a selected remote task through its live owner", async () => {
     const router = await fakeRemoteRouter();
-    const client = new CodexDesktopClient(router.home);
+    const applied: unknown[] = [];
+    const client = new CodexDesktopClient(
+      router.home,
+      async (current, target) => {
+        applied.push({ current, target });
+        router.setState(target.model, target.effort);
+      },
+    );
 
     const before = await client.readState();
     expect(before).toEqual({
@@ -385,7 +389,16 @@ describe("Codex desktop client", () => {
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
-    expect(router.updateTargets()).toEqual(["remote-owner-client"]);
+    expect(applied).toEqual([
+      {
+        current: expect.objectContaining({
+          effort: "high",
+          model: "gpt-5.6-luna",
+        }),
+        target: { effort: "medium", model: "gpt-5.6-sol" },
+      },
+    ]);
+    expect(router.updateTargets()).toEqual([]);
     client.disconnect();
   });
 });

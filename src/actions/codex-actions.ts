@@ -2,10 +2,12 @@ import {
   action,
   type DidReceiveSettingsEvent,
   type KeyDownEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type WillAppearEvent,
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
+import type { JsonValue } from "@elgato/utils";
 
 import { codexController } from "../codex/controller";
 import {
@@ -13,6 +15,8 @@ import {
   type ActionSettings,
   defaultsFor,
 } from "../domain/settings";
+import { BUILT_IN_STYLES } from "../domain/styles";
+import { styleService } from "../ui/style-service";
 
 abstract class CodexAction extends SingletonAction<ActionSettings> {
   abstract readonly kind: ActionKind;
@@ -22,7 +26,7 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
   ): Promise<void> {
     if (!event.action.isKey()) return;
     const settings = this.#withDefaults(event.payload.settings);
-    if (Object.keys(event.payload.settings).length === 0)
+    if (JSON.stringify(settings) !== JSON.stringify(event.payload.settings))
       await event.action.setSettings(settings);
     await codexController.show(event.action, this.kind, settings);
   }
@@ -51,10 +55,29 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
     );
   }
 
+  override async onSendToPlugin(
+    event: SendToPluginEvent<JsonValue, ActionSettings>,
+  ): Promise<void> {
+    await styleService.handle(event.payload);
+  }
+
   #withDefaults(settings: ActionSettings): ActionSettings {
-    return Object.keys(settings).length === 0
-      ? defaultsFor(this.kind)
-      : settings;
+    const result = structuredClone(
+      Object.keys(settings).length === 0 ? defaultsFor(this.kind) : settings,
+    );
+    const key =
+      this.kind === "model"
+        ? "models"
+        : this.kind === "thinking"
+          ? "thinking"
+          : "presets";
+    const values = result[key];
+    if (Array.isArray(values))
+      for (const [index, value] of values.entries()) {
+        if (value && typeof value === "object" && !value.styleId)
+          value.styleId = BUILT_IN_STYLES[index % BUILT_IN_STYLES.length].id;
+      }
+    return result;
   }
 }
 

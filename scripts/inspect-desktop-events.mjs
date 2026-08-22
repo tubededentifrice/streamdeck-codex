@@ -105,11 +105,7 @@ let clientId;
 const initializeId = crypto.randomUUID();
 const requestedThreadId = process.argv[2];
 const requestedHostId = process.argv[3];
-const updateSame = process.argv[4] === "--update-same";
-let updateSent = false;
 let followRequested = false;
-let discoveryRequestId;
-let pendingSettings;
 
 function broadcast(method, version, params) {
   socket.write(
@@ -179,9 +175,6 @@ socket.on("data", (chunk) => {
       message.params?.following === true
     ) {
       followRequested = true;
-      updateSent = false;
-      discoveryRequestId = undefined;
-      pendingSettings = undefined;
       broadcast("thread-stream-following-changed", 1, {
         conversationId: requestedThreadId,
         hostId: requestedHostId,
@@ -191,67 +184,6 @@ socket.on("data", (chunk) => {
         conversationId: requestedThreadId,
         hostId: requestedHostId,
       });
-    }
-
-    const state = message.params?.change?.conversationState;
-    const stateModel = state?.latestModel ?? state?.latestThreadSettings?.model;
-    const stateEffort =
-      state?.latestReasoningEffort ??
-      state?.latestThreadSettings?.effort ??
-      state?.latestThreadSettings?.reasoningEffort;
-    if (
-      updateSame &&
-      !updateSent &&
-      message.method === "thread-stream-state-changed" &&
-      message.params?.conversationId === requestedThreadId &&
-      typeof stateModel === "string" &&
-      typeof stateEffort === "string"
-    ) {
-      updateSent = true;
-      pendingSettings = {
-        model: stateModel,
-        effort: stateEffort,
-      };
-      discoveryRequestId = crypto.randomUUID();
-      socket.write(
-        frame({
-          type: "request",
-          requestId: discoveryRequestId,
-          sourceClientId: clientId,
-          version: 1,
-          timeoutMs: 5000,
-          method: "thread-owner-discovery",
-          params: {
-            conversationId: requestedThreadId,
-            hostId: requestedHostId,
-          },
-        }),
-      );
-    }
-
-    if (
-      message.type === "response" &&
-      message.requestId === discoveryRequestId &&
-      message.resultType === "success" &&
-      typeof message.handledByClientId === "string" &&
-      pendingSettings
-    ) {
-      socket.write(
-        frame({
-          type: "request",
-          requestId: crypto.randomUUID(),
-          sourceClientId: clientId,
-          targetClientId: message.handledByClientId,
-          version: 1,
-          timeoutMs: 5000,
-          method: "thread-follower-update-thread-settings",
-          params: {
-            conversationId: requestedThreadId,
-            threadSettings: pendingSettings,
-          },
-        }),
-      );
-      pendingSettings = undefined;
     }
 
     if (message.type === "client-discovery-request" && message.requestId) {

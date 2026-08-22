@@ -6,7 +6,9 @@ import type {
   CodexState,
 } from "../domain/settings";
 import { choicesFor, nextChoice, targetState } from "../domain/settings";
+import { activeStyleFor } from "../domain/styles";
 import { renderError, renderKey, renderLoading } from "../ui/key-renderer";
+import { styleService } from "../ui/style-service";
 import { CodexDesktopClient } from "./desktop-client";
 
 type VisibleAction = {
@@ -25,7 +27,9 @@ class CodexController {
 
   start(): void {
     this.#client.onChange(() => this.#refreshInBackground());
+    styleService.onChange(() => this.#refreshInBackground());
     setInterval(() => this.#refreshInBackground(), 2000).unref();
+    this.#refreshInBackground();
   }
 
   show(
@@ -77,8 +81,11 @@ class CodexController {
           );
           changed = true;
           await this.#blinkBorder(action, kind, settings, updated);
+          streamDeck.logger.info("Codex setting update verified.");
         } catch (error) {
-          streamDeck.logger.error("Codex setting update failed.");
+          const detail =
+            error instanceof Error ? error.message : "Unknown update error.";
+          streamDeck.logger.error(`Codex setting update failed: ${detail}`);
           await this.#setImage(action, renderError(kind, error));
           await this.#showAlert(action);
         } finally {
@@ -133,7 +140,16 @@ class CodexController {
         if (this.#busy.has(action.id)) return;
         const count = choicesFor(kind as "preset", settings).length;
         const next = nextChoice(kind as "preset", settings, state);
-        await this.#setImage(action, renderKey(kind, state, next, count));
+        const style = activeStyleFor(
+          kind,
+          settings,
+          state,
+          styleService.settings,
+        );
+        await this.#setImage(
+          action,
+          renderKey(kind, state, next, count, style),
+        );
       }),
     );
   }
@@ -167,8 +183,9 @@ class CodexController {
   ): Promise<void> {
     const count = choicesFor(kind as "preset", settings).length;
     const next = nextChoice(kind as "preset", settings, state);
-    const normal = renderKey(kind, state, next, count);
-    const bright = renderKey(kind, state, next, count, "#ffffff");
+    const style = activeStyleFor(kind, settings, state, styleService.settings);
+    const normal = renderKey(kind, state, next, count, style);
+    const bright = renderKey(kind, state, next, count, style, "#ffffff");
     for (let blink = 0; blink < 3; blink += 1) {
       await this.#setImage(action, bright);
       await new Promise((resolve) => setTimeout(resolve, 55));

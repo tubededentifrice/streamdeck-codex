@@ -34,6 +34,11 @@ Select the key in Stream Deck and edit its ordered value list. Use the short
 label for the key display. Use Codex identifiers such as `gpt-5.6-sol` and
 thinking values such as `medium` or `high`.
 
+Each configured value also selects a color preset for its border, background,
+and text. The plug-in includes 16 fixed presets. You can save custom presets in
+**Manage custom colors**. Custom presets are shared by all Codex Controls keys,
+profiles, and devices in the same Stream Deck installation.
+
 One value makes a direct set key. Two or more values make a cycle key. If the
 current value is not in the list, the first press selects the first value. The
 key always shows the live current value and the value that the next press will
@@ -45,6 +50,15 @@ set.
 - Codex desktop
 - Elgato Stream Deck 7.1 or later
 - Node.js 24
+
+Remote setting changes use the bundled **Codex Controls Helper** because the
+current Codex desktop IPC can report remote state but cannot write it. Allow the
+**Stream Deck** in **System Settings → Privacy & Security → Accessibility** and
+allow **Codex Controls Helper** in **Screen & System Audio Recording** when
+macOS requests access. The helper operates only the selected Codex model menu.
+It recognizes the requested menu label on-device, does not save the captured
+menu image, and verifies each change through IPC. It does not use SSH. These
+permissions are not used for local tasks.
 
 ## Development setup
 

@@ -8,15 +8,16 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "rollup -c",
-    "format": "prettier --write . --ignore-unknown",
-    "format:check": "prettier --check . --ignore-unknown",
-    "lint": "eslint .",
+    "build": "npm run build:helper && rollup -c",
+    "build:helper": "zsh scripts/build-helper.sh",
+    "format": "prettier --write . --ignore-unknown && xcrun swift-format format --in-place native/CodexControlsHelper/main.swift",
+    "format:check": "prettier --check . --ignore-unknown && xcrun swift-format lint --strict native/CodexControlsHelper/main.swift",
+    "lint": "eslint . && xcrun swift-format lint --strict native/CodexControlsHelper/main.swift",
     "smoke:codex": "CODEX_LIVE_TEST=1 vitest run tests/live-codex.test.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "validate": "streamdeck validate com.courcelle.codex-controls.sdPlugin --no-update-check",
-    "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.courcelle.codex-controls\""
+    "watch": "npm run build:helper && rollup -c -w --watch.onEnd=\"streamdeck restart com.courcelle.codex-controls\""
   },
   "type": "module",
   "devDependencies": {

@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type { CodexState } from "../domain/settings";
+import { updateRemoteTaskThroughApp } from "./app-controller";
 
 const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const STATE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -17,6 +18,11 @@ type PendingRequest = {
   resolve: (value: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+
+type RemoteUpdater = (
+  current: Pick<CodexState, "effort" | "model">,
+  target: Pick<CodexState, "effort" | "model">,
+) => Promise<void>;
 
 function encodeFrame(value: unknown): Buffer {
   const payload = Buffer.from(JSON.stringify(value), "utf8");
@@ -31,11 +37,12 @@ function isStateValue(value: unknown): value is string {
 
 export class CodexDesktopClient {
   readonly #codexHome: string;
+  readonly #remoteUpdater: RemoteUpdater;
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #remoteStates = new Map<
     string,
-    CodexState & { ownerClientId: string }
+    CodexState & { relayClientId: string }
   >();
   readonly #selectedRoutes = new Map<
     string,
@@ -50,8 +57,10 @@ export class CodexDesktopClient {
 
   constructor(
     codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
+    remoteUpdater: RemoteUpdater = updateRemoteTaskThroughApp,
   ) {
     this.#codexHome = codexHome;
+    this.#remoteUpdater = remoteUpdater;
   }
 
   onChange(listener: () => void): () => void {
@@ -112,28 +121,25 @@ export class CodexDesktopClient {
       before.hostId !== expectedHostId
     )
       throw new Error("The selected task changed before the update.");
-    const ownerClientId =
-      before.hostId === "local"
-        ? undefined
-        : await this.#discoverOwner(before.hostId, before.threadId);
     const currentRoute = await this.#selectedRoute();
     if (
       currentRoute.threadId !== before.threadId ||
       currentRoute.hostId !== before.hostId
     )
       throw new Error("The selected task changed before the update.");
-    const result = (await this.#request(
-      "thread-follower-update-thread-settings",
-      {
-        conversationId: before.threadId,
-        threadSettings: { effort, model },
-      },
-      1,
-      5000,
-      ownerClientId,
-    )) as { ok?: unknown } | undefined;
-    if (result?.ok !== true)
-      throw new Error("Codex desktop did not confirm the settings update.");
+    if (before.hostId === "local") {
+      const result = (await this.#request(
+        "thread-follower-update-thread-settings",
+        {
+          conversationId: before.threadId,
+          threadSettings: { effort, model },
+        },
+      )) as { ok?: unknown } | undefined;
+      if (result?.ok !== true)
+        throw new Error("Codex desktop did not confirm the settings update.");
+    } else {
+      await this.#remoteUpdater(before, { effort, model });
+    }
 
     if (before.hostId !== "local") {
       this.#remoteStates.delete(this.#routeKey(before.hostId, before.threadId));
@@ -288,16 +294,6 @@ export class CodexDesktopClient {
     });
   }
 
-  async #discoverOwner(hostId: string, threadId: string): Promise<string> {
-    const response = (await this.#request("thread-owner-discovery", {
-      conversationId: threadId,
-      hostId,
-    })) as { handledByClientId?: unknown } | undefined;
-    if (typeof response?.handledByClientId !== "string")
-      throw new Error("Codex did not find the selected remote task owner.");
-    return response.handledByClientId;
-  }
-
   #broadcast(method: string, version: number, params: unknown): void {
     if (!this.#socket || this.#socket.destroyed || !this.#clientId) return;
     this.#socket.write(
@@ -413,11 +409,7 @@ export class CodexDesktopClient {
         this.#pending.delete(message.requestId);
         clearTimeout(pending.timer);
         if (message.resultType === "success") {
-          pending.resolve(
-            pending.method === "thread-owner-discovery"
-              ? { handledByClientId: message.handledByClientId }
-              : message.result,
-          );
+          pending.resolve(message.result);
         } else
           pending.reject(
             new Error(`Codex desktop rejected ${pending.method}.`),
@@ -523,7 +515,7 @@ export class CodexDesktopClient {
           effort,
           hostId: params.hostId,
           model,
-          ownerClientId: message.sourceClientId,
+          relayClientId: message.sourceClientId,
           threadId: params.conversationId,
         });
         this.#emitChange();
@@ -533,7 +525,7 @@ export class CodexDesktopClient {
 
     if (change.type !== "patches" || !Array.isArray(change.patches)) return;
     const current = this.#remoteStates.get(key);
-    if (!current || current.ownerClientId !== message.sourceClientId) return;
+    if (!current || current.relayClientId !== message.sourceClientId) return;
     let model = current.model;
     let effort = current.effort;
     for (const patch of change.patches) {
