@@ -55,7 +55,9 @@ describe("remote Codex App Server", () => {
   });
 
   it("reuses one connection for the detected host", async () => {
-    const update = vi.fn(async () => undefined);
+    const update = vi.fn(
+      async (_threadId: string, target: typeof TARGET) => target,
+    );
     const close = vi.fn();
     const connect = vi.fn(async (): Promise<RemoteAppServerClient> => ({
       close,
@@ -90,11 +92,11 @@ describe("remote Codex App Server", () => {
       })
       .mockResolvedValueOnce({
         close: secondClose,
-        update: vi.fn(async () => undefined),
+        update: vi.fn(async (_threadId, target) => target),
       });
     const updater = new RemoteTaskUpdater(connect);
 
-    await expect(updater.update(CURRENT, TARGET)).resolves.toBeUndefined();
+    await expect(updater.update(CURRENT, TARGET)).resolves.toEqual(TARGET);
     expect(connect).toHaveBeenCalledTimes(2);
     expect(firstClose).toHaveBeenCalledOnce();
     updater.close();

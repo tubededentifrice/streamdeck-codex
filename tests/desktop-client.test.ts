@@ -14,6 +14,15 @@ type Router = {
   close: () => Promise<void>;
   home: string;
   select: (threadId: string) => void;
+  snapshot: (
+    threadId: string,
+    options?: {
+      effort?: string;
+      model?: string;
+      parentThreadId?: string;
+      sideConversation?: boolean;
+    },
+  ) => void;
   updateCount: () => number;
 };
 
@@ -26,6 +35,7 @@ type RemoteRouter = {
 
 const THREAD_A = "01a0289e-e3d3-7fc1-8774-bbc3bc4f0712";
 const THREAD_B = "01a0289e-e3d3-7fc1-8774-bbc3bc4f0713";
+const THREAD_C = "01a0289e-e3d3-7fc1-8774-bbc3bc4f0714";
 const cleanups: Array<() => Promise<void>> = [];
 
 function frame(value: unknown): Buffer {
@@ -165,6 +175,42 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
       }),
     );
   };
+  const snapshot = (
+    threadId: string,
+    options: {
+      effort?: string;
+      model?: string;
+      parentThreadId?: string;
+      sideConversation?: boolean;
+    } = {},
+  ) => {
+    const row = database
+      .prepare("SELECT model, reasoning_effort FROM threads WHERE id = ?")
+      .get(threadId) as { model: string; reasoning_effort: string };
+    activeSocket?.write(
+      frame({
+        method: "thread-stream-state-changed",
+        params: {
+          change: {
+            conversationState: {
+              latestModel: options.model ?? row?.model,
+              latestReasoningEffort: options.effort ?? row?.reasoning_effort,
+              sideConversation: options.sideConversation ?? false,
+              sideConversationParentNavigationPath: options.parentThreadId
+                ? `/local/${options.parentThreadId}?hostId=local`
+                : undefined,
+            },
+            type: "snapshot",
+          },
+          conversationId: threadId,
+          hostId: "local",
+        },
+        sourceClientId: "desktop-ui-client",
+        type: "broadcast",
+        version: 11,
+      }),
+    );
+  };
   const close = async () => {
     activeSocket?.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -172,7 +218,14 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
     fs.rmSync(home, { force: true, recursive: true });
   };
   cleanups.push(close);
-  return { announce, close, home, select, updateCount: () => updates };
+  return {
+    announce,
+    close,
+    home,
+    select,
+    snapshot,
+    updateCount: () => updates,
+  };
 }
 
 async function fakeRemoteRouter(): Promise<RemoteRouter> {
@@ -408,7 +461,7 @@ describe("Codex desktop client", () => {
     const routes: unknown[] = [];
     const client = new CodexDesktopClient(
       router.home,
-      async () => undefined,
+      async (_current, target) => target,
       (route) => routes.push(route),
     );
     await client.readState();
@@ -419,7 +472,7 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
-  it("ignores repeated selection events from another Codex window", async () => {
+  it("uses repeated following events as the current selection", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
     await client.readState();
@@ -434,8 +487,8 @@ describe("Codex desktop client", () => {
     router.announce(THREAD_A, true);
     await new Promise((resolve) => setTimeout(resolve, 10));
     await expect(client.readState()).resolves.toMatchObject({
-      model: "gpt-5.6-terra",
-      threadId: THREAD_B,
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
     });
 
     router.announce(THREAD_B, false);
@@ -443,6 +496,46 @@ describe("Codex desktop client", () => {
     await expect(client.readState()).resolves.toMatchObject({
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("maps a followed sidecar to its parent task", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_B, true);
+    router.snapshot(THREAD_B, {
+      parentThreadId: THREAD_A,
+      sideConversation: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("reads a new unsaved task from its live snapshot", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_C, true);
+    router.snapshot(THREAD_C, {
+      effort: "high",
+      model: "gpt-5.6-luna",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toEqual({
+      effort: "high",
+      hostId: "local",
+      model: "gpt-5.6-luna",
+      threadId: THREAD_C,
     });
     client.disconnect();
   });
@@ -455,6 +548,7 @@ describe("Codex desktop client", () => {
       async (current, target) => {
         applied.push({ current, target });
         router.setState(target.model, target.effort);
+        return target;
       },
     );
 
@@ -490,6 +584,13 @@ describe("Codex desktop client", () => {
       },
     ]);
     expect(router.updateTargets()).toEqual([]);
+
+    router.setState("gpt-5.6-luna", "high");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      effort: "high",
+      model: "gpt-5.6-luna",
+    });
     client.disconnect();
   });
 });

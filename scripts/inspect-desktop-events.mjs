@@ -90,6 +90,10 @@ function safeSummary(message) {
       : undefined,
     latestModel: conversationState?.latestModel,
     latestReasoningEffort: conversationState?.latestReasoningEffort,
+    sideConversation: conversationState?.sideConversation,
+    parentThreadId: conversationState?.parentThreadId,
+    sideConversationParentNavigationPath:
+      conversationState?.sideConversationParentNavigationPath,
     error:
       typeof message.error === "string"
         ? message.error.slice(0, 300)
