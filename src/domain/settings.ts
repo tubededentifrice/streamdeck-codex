@@ -14,6 +14,7 @@ export type ActionSettings = JsonObject & {
 
 export type CodexState = {
   effort: string;
+  hostId: string;
   model: string;
   threadId: string;
 };

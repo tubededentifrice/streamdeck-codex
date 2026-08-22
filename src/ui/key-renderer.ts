@@ -67,6 +67,7 @@ export function renderKey(
   state: CodexState,
   next: ModelChoice | ThinkingChoice | PresetChoice | undefined,
   choiceCount: number,
+  borderColor?: string,
 ): string {
   const [primary, secondary] = currentLines(kind, state);
   const target = nextLabel(kind, next);
@@ -88,7 +89,7 @@ export function renderKey(
 		<text x="72" y="118" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
 		<circle cx="72" cy="130" r="3" fill="${COLORS[kind]}"/>
 	`,
-    COLORS[kind],
+    borderColor ?? COLORS[kind],
   );
 }
 

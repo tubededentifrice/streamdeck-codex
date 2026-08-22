@@ -31,13 +31,21 @@ function isStateValue(value: unknown): value is string {
 
 export class CodexDesktopClient {
   readonly #codexHome: string;
-  readonly #following = new Map<string, boolean>();
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingRequest>();
+  readonly #remoteStates = new Map<
+    string,
+    CodexState & { ownerClientId: string }
+  >();
+  readonly #selectedRoutes = new Map<
+    string,
+    { hostId: string; threadId: string }
+  >();
   #buffer = Buffer.alloc(0);
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
   #database: DatabaseSync | undefined;
+  #selectionSourceClientId: string | undefined;
   #socket: net.Socket | undefined;
 
   constructor(
@@ -70,11 +78,12 @@ export class CodexDesktopClient {
 
   async readState(): Promise<CodexState> {
     await this.connect();
-    const threadId = this.#selectedThreadId();
+    const route = await this.#selectedRoute();
+    if (route.hostId !== "local") return this.#readRemoteState(route);
     const database = this.#getDatabase();
     const row = database
       .prepare("SELECT model, reasoning_effort FROM threads WHERE id = ?")
-      .get(threadId) as
+      .get(route.threadId) as
       { model?: unknown; reasoning_effort?: unknown } | undefined;
     if (!row || !isStateValue(row.model)) {
       throw new Error(
@@ -83,16 +92,35 @@ export class CodexDesktopClient {
     }
     if (!isStateValue(row.reasoning_effort))
       throw new Error("The selected task has an invalid thinking level.");
-    return { effort: row.reasoning_effort, model: row.model, threadId };
+    return {
+      effort: row.reasoning_effort,
+      hostId: route.hostId,
+      model: row.model,
+      threadId: route.threadId,
+    };
   }
 
   async update(
     model: string,
     effort: string,
     expectedThreadId: string,
+    expectedHostId = "local",
   ): Promise<CodexState> {
     const before = await this.readState();
-    if (before.threadId !== expectedThreadId)
+    if (
+      before.threadId !== expectedThreadId ||
+      before.hostId !== expectedHostId
+    )
+      throw new Error("The selected task changed before the update.");
+    const ownerClientId =
+      before.hostId === "local"
+        ? undefined
+        : await this.#discoverOwner(before.hostId, before.threadId);
+    const currentRoute = await this.#selectedRoute();
+    if (
+      currentRoute.threadId !== before.threadId ||
+      currentRoute.hostId !== before.hostId
+    )
       throw new Error("The selected task changed before the update.");
     const result = (await this.#request(
       "thread-follower-update-thread-settings",
@@ -100,13 +128,21 @@ export class CodexDesktopClient {
         conversationId: before.threadId,
         threadSettings: { effort, model },
       },
+      1,
+      5000,
+      ownerClientId,
     )) as { ok?: unknown } | undefined;
     if (result?.ok !== true)
       throw new Error("Codex desktop did not confirm the settings update.");
 
+    if (before.hostId !== "local") {
+      this.#remoteStates.delete(this.#routeKey(before.hostId, before.threadId));
+      this.#requestRemoteStatus(before);
+    }
+
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const state = await this.readState();
-      if (state.threadId !== before.threadId)
+      if (state.threadId !== before.threadId || state.hostId !== before.hostId)
         throw new Error("The selected task changed during the update.");
       if (state.model === model && state.effort === effort) {
         this.#emitChange();
@@ -167,7 +203,6 @@ export class CodexDesktopClient {
       if (typeof result?.clientId !== "string")
         throw new Error("Codex desktop did not return a client ID.");
       this.#clientId = result.clientId;
-      await new Promise((resolve) => setTimeout(resolve, 250));
     } catch (error) {
       if (this.#socket === socket)
         this.#close(
@@ -179,15 +214,36 @@ export class CodexDesktopClient {
     }
   }
 
-  #selectedThreadId(): string {
-    const selected = [...this.#following.entries()]
-      .filter(([, following]) => following)
-      .map(([threadId]) => threadId);
-    if (selected.length === 0)
-      throw new Error("Select a task in the Codex desktop app.");
-    if (selected.length > 1)
-      throw new Error("Codex reports more than one selected task.");
-    return selected[0];
+  async #selectedRoute(): Promise<{ hostId: string; threadId: string }> {
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const selected = [...this.#selectedRoutes.values()];
+      if (selected.length === 1) return selected[0];
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Select a task in the Codex desktop app.");
+  }
+
+  async #readRemoteState(route: {
+    hostId: string;
+    threadId: string;
+  }): Promise<CodexState> {
+    const key = this.#routeKey(route.hostId, route.threadId);
+    let state = this.#remoteStates.get(key);
+    if (!state) {
+      this.#requestRemoteStatus(route);
+      for (let attempt = 0; attempt < 25 && !state; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        state = this.#remoteStates.get(key);
+      }
+    }
+    if (!state)
+      throw new Error("Codex did not provide the selected remote task state.");
+    return {
+      effort: state.effort,
+      hostId: state.hostId,
+      model: state.model,
+      threadId: state.threadId,
+    };
   }
 
   #getDatabase(): DatabaseSync {
@@ -205,6 +261,7 @@ export class CodexDesktopClient {
     params: unknown,
     version = 1,
     timeoutMs = 5000,
+    targetClientId?: string,
   ): Promise<unknown> {
     if (!this.#socket || this.#socket.destroyed)
       return Promise.reject(new Error("Codex desktop is not connected."));
@@ -218,6 +275,7 @@ export class CodexDesktopClient {
       sourceClientId: version === 0 ? "initializing-client" : this.#clientId,
       type: "request",
       version,
+      ...(targetClientId ? { targetClientId } : {}),
       ...(version > 0 ? { timeoutMs } : {}),
     };
     return new Promise((resolve, reject) => {
@@ -228,6 +286,29 @@ export class CodexDesktopClient {
       this.#pending.set(requestId, { method, reject, resolve, timer });
       this.#socket?.write(encodeFrame(message));
     });
+  }
+
+  async #discoverOwner(hostId: string, threadId: string): Promise<string> {
+    const response = (await this.#request("thread-owner-discovery", {
+      conversationId: threadId,
+      hostId,
+    })) as { handledByClientId?: unknown } | undefined;
+    if (typeof response?.handledByClientId !== "string")
+      throw new Error("Codex did not find the selected remote task owner.");
+    return response.handledByClientId;
+  }
+
+  #broadcast(method: string, version: number, params: unknown): void {
+    if (!this.#socket || this.#socket.destroyed || !this.#clientId) return;
+    this.#socket.write(
+      encodeFrame({
+        type: "broadcast",
+        sourceClientId: this.#clientId,
+        method,
+        version,
+        params,
+      }),
+    );
   }
 
   #onData(chunk: Buffer): void {
@@ -270,15 +351,57 @@ export class CodexDesktopClient {
         message.version === 1
       ) {
         const params = message.params as
-          { conversationId?: unknown; following?: unknown } | undefined;
+          | {
+              conversationId?: unknown;
+              following?: unknown;
+              hostId?: unknown;
+            }
+          | undefined;
         if (
           typeof params?.conversationId === "string" &&
           THREAD_ID.test(params.conversationId) &&
+          typeof params.hostId === "string" &&
           typeof params.following === "boolean"
         ) {
-          this.#following.set(params.conversationId, params.following);
-          this.#emitChange();
+          const targeted = Array.isArray(message.targetClientIds);
+          const sourceClientId =
+            typeof message.sourceClientId === "string"
+              ? message.sourceClientId
+              : undefined;
+          if (!this.#selectionSourceClientId && sourceClientId)
+            this.#selectionSourceClientId = sourceClientId;
+          const fromSelectionSource =
+            !sourceClientId || sourceClientId === this.#selectionSourceClientId;
+          if (!targeted && fromSelectionSource) {
+            const route = {
+              hostId: params.hostId,
+              threadId: params.conversationId,
+            };
+            const key = this.#routeKey(route.hostId, route.threadId);
+            if (params.following) {
+              for (const [selectedKey, selectedRoute] of this.#selectedRoutes) {
+                if (selectedKey !== key && selectedRoute.hostId !== "local")
+                  this.#followRemote(selectedRoute, false);
+              }
+              this.#selectedRoutes.clear();
+              this.#remoteStates.delete(key);
+              this.#selectedRoutes.set(key, route);
+              if (route.hostId !== "local") this.#followRemote(route, true);
+            } else {
+              this.#selectedRoutes.delete(key);
+              this.#remoteStates.delete(key);
+              if (route.hostId !== "local") this.#followRemote(route, false);
+            }
+            this.#emitChange();
+          }
         }
+      }
+
+      if (
+        message.method === "thread-stream-state-changed" &&
+        message.version === 11
+      ) {
+        this.#handleRemoteState(message);
       }
 
       if (
@@ -289,8 +412,13 @@ export class CodexDesktopClient {
         if (!pending) continue;
         this.#pending.delete(message.requestId);
         clearTimeout(pending.timer);
-        if (message.resultType === "success") pending.resolve(message.result);
-        else
+        if (message.resultType === "success") {
+          pending.resolve(
+            pending.method === "thread-owner-discovery"
+              ? { handledByClientId: message.handledByClientId }
+              : message.result,
+          );
+        } else
           pending.reject(
             new Error(`Codex desktop rejected ${pending.method}.`),
           );
@@ -301,12 +429,14 @@ export class CodexDesktopClient {
   #close(error: Error): void {
     const socket = this.#socket;
     const hadConnection = Boolean(
-      socket || this.#clientId || this.#following.size > 0,
+      socket || this.#clientId || this.#selectedRoutes.size > 0,
     );
     this.#socket = undefined;
     this.#clientId = undefined;
+    this.#selectionSourceClientId = undefined;
     this.#buffer = Buffer.alloc(0);
-    this.#following.clear();
+    this.#selectedRoutes.clear();
+    this.#remoteStates.clear();
     if (socket && !socket.destroyed) socket.destroy();
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
@@ -318,5 +448,112 @@ export class CodexDesktopClient {
 
   #emitChange(): void {
     for (const listener of this.#listeners) listener();
+  }
+
+  #followRemote(
+    route: { hostId: string; threadId: string },
+    following: boolean,
+  ): void {
+    this.#broadcast("thread-stream-following-changed", 1, {
+      conversationId: route.threadId,
+      hostId: route.hostId,
+      following,
+    });
+    if (following) this.#requestRemoteStatus(route);
+  }
+
+  #requestRemoteStatus(route: { hostId: string; threadId: string }): void {
+    this.#broadcast("thread-stream-following-status-requested", 1, {
+      conversationId: route.threadId,
+      hostId: route.hostId,
+    });
+  }
+
+  #handleRemoteState(message: Record<string, unknown>): void {
+    const params = message.params as
+      | { change?: unknown; conversationId?: unknown; hostId?: unknown }
+      | undefined;
+    if (
+      typeof params?.conversationId !== "string" ||
+      !THREAD_ID.test(params.conversationId) ||
+      typeof params.hostId !== "string" ||
+      params.hostId === "local" ||
+      typeof message.sourceClientId !== "string" ||
+      !params.change ||
+      typeof params.change !== "object"
+    )
+      return;
+    const key = this.#routeKey(params.hostId, params.conversationId);
+    if (!this.#selectedRoutes.has(key)) return;
+    const change = params.change as {
+      conversationState?: unknown;
+      patches?: unknown;
+      type?: unknown;
+    };
+
+    if (
+      change.type === "snapshot" &&
+      change.conversationState &&
+      typeof change.conversationState === "object"
+    ) {
+      const state = change.conversationState as {
+        latestModel?: unknown;
+        latestReasoningEffort?: unknown;
+        latestThreadSettings?: unknown;
+      };
+      const settings =
+        state.latestThreadSettings &&
+        typeof state.latestThreadSettings === "object"
+          ? (state.latestThreadSettings as {
+              effort?: unknown;
+              model?: unknown;
+              reasoningEffort?: unknown;
+            })
+          : undefined;
+      const model = isStateValue(state.latestModel)
+        ? state.latestModel
+        : settings?.model;
+      const effort = isStateValue(state.latestReasoningEffort)
+        ? state.latestReasoningEffort
+        : isStateValue(settings?.effort)
+          ? settings.effort
+          : settings?.reasoningEffort;
+      if (isStateValue(model) && isStateValue(effort)) {
+        this.#remoteStates.set(key, {
+          effort,
+          hostId: params.hostId,
+          model,
+          ownerClientId: message.sourceClientId,
+          threadId: params.conversationId,
+        });
+        this.#emitChange();
+      }
+      return;
+    }
+
+    if (change.type !== "patches" || !Array.isArray(change.patches)) return;
+    const current = this.#remoteStates.get(key);
+    if (!current || current.ownerClientId !== message.sourceClientId) return;
+    let model = current.model;
+    let effort = current.effort;
+    for (const patch of change.patches) {
+      if (!patch || typeof patch !== "object") continue;
+      const { path: patchPath, value } = patch as {
+        path?: unknown;
+        value?: unknown;
+      };
+      if (!Array.isArray(patchPath) || patchPath.length === 0) continue;
+      if (patchPath[0] === "latestModel" && isStateValue(value)) model = value;
+      if (patchPath[0] === "latestReasoningEffort" && isStateValue(value))
+        effort = value;
+    }
+    if (model !== current.model || effort !== current.effort) {
+      this.#remoteStates.set(key, { ...current, effort, model });
+      this.#emitChange();
+    }
+  }
+
+  #routeKey(hostId: string, threadId: string): string {
+    return `${hostId}\0${threadId}`;
   }
 }

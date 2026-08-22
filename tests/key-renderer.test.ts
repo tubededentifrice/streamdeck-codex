@@ -7,7 +7,12 @@ describe("key renderer", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
-        { effort: "medium", model: "gpt-5.6-sol", threadId: "thread-123" },
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
         { label: "Luna", model: "gpt-5.6-luna" },
         2,
       ),
@@ -20,13 +25,36 @@ describe("key renderer", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
-        { effort: "medium", model: "custom", threadId: "thread-123" },
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "custom",
+          threadId: "thread-123",
+        },
         { label: "A&B<", model: "next" },
         1,
       ),
     );
     expect(image).toContain("A&amp;B&lt;");
     expect(image).not.toContain("A&B<");
+  });
+
+  it("uses a temporary border color for success blinking", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "thinking",
+        {
+          effort: "high",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        { effort: "medium", label: "Medium" },
+        2,
+        "#ffffff",
+      ),
+    );
+    expect(image).toContain('stroke="#ffffff"');
   });
 
   it("does not expose error details on the key", () => {

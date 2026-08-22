@@ -24,6 +24,16 @@
     thinking: "thinking",
     preset: "presets",
   };
+  const thinkingLevels = [
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+  ];
 
   window.connectElgatoStreamDeckSocket = (
     port,
@@ -87,6 +97,32 @@
     container.append(row);
   }
 
+  function thinkingRow(container, value) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const labelElement = document.createElement("label");
+    labelElement.textContent = "Thinking";
+    const select = document.createElement("select");
+    const current = value.effort || "medium";
+    value.effort = current;
+    const options = thinkingLevels.includes(current)
+      ? thinkingLevels
+      : [current, ...thinkingLevels];
+    for (const effort of options) {
+      const option = document.createElement("option");
+      option.value = effort;
+      option.textContent = effort[0].toUpperCase() + effort.slice(1);
+      option.selected = effort === current;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      value.effort = select.value;
+      save();
+    });
+    row.append(labelElement, select);
+    container.append(row);
+  }
+
   function render() {
     const container = document.querySelector("#choices");
     container.replaceChildren();
@@ -102,8 +138,7 @@
       );
       if (kind !== "thinking")
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
-      if (kind !== "model")
-        inputRow(choice, "Thinking", "effort", value, "medium");
+      if (kind !== "model") thinkingRow(choice, value);
       const buttons = document.createElement("div");
       buttons.className = "buttons";
       for (const [text, move] of [

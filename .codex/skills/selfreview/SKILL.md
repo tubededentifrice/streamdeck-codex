@@ -59,12 +59,13 @@ For each changed path, check these areas.
 
 ### Codex compatibility and safety
 
-- Keep all local Codex interface details behind the Codex adapter.
+- Keep all Codex desktop interface details behind the Codex adapter.
 - Reject or report missing tasks, unsupported models or thinking levels,
   unavailable sockets, timeouts, malformed responses, and Codex restarts.
 - Check file and socket ownership assumptions. Do not expose tokens, task
   content, local paths, or other sensitive data in logs or key images.
-- Do not add SSH, remote execution, or global-default changes.
+- For remote tasks, use Codex desktop IPC only. Do not add SSH, host settings,
+  remote command execution, or global-default changes.
 - Confirm that updates affect the selected task's next turn only.
 
 ### Stream Deck SDK

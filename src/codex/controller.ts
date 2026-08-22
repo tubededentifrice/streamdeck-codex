@@ -69,17 +69,18 @@ class CodexController {
               "Add at least one valid choice in the key settings.",
             );
           const target = targetState(kind, choice, current);
-          await this.#client.update(
+          const updated = await this.#client.update(
             target.model,
             target.effort,
             current.threadId,
+            current.hostId,
           );
           changed = true;
-          await this.#showFeedback(action, "ok");
+          await this.#blinkBorder(action, kind, settings, updated);
         } catch (error) {
           streamDeck.logger.error("Codex setting update failed.");
           await this.#setImage(action, renderError(kind, error));
-          await this.#showFeedback(action, "alert");
+          await this.#showAlert(action);
         } finally {
           this.#busy.delete(action.id);
         }
@@ -149,16 +150,30 @@ class CodexController {
     }
   }
 
-  async #showFeedback(
-    action: KeyAction<ActionSettings>,
-    feedback: "alert" | "ok",
-  ): Promise<void> {
+  async #showAlert(action: KeyAction<ActionSettings>): Promise<void> {
     if (this.#visible.get(action.id)?.action !== action) return;
     try {
-      if (feedback === "ok") await action.showOk();
-      else await action.showAlert();
+      await action.showAlert();
     } catch {
       streamDeck.logger.error("Stream Deck did not accept key feedback.");
+    }
+  }
+
+  async #blinkBorder(
+    action: KeyAction<ActionSettings>,
+    kind: ActionKind,
+    settings: ActionSettings,
+    state: CodexState,
+  ): Promise<void> {
+    const count = choicesFor(kind as "preset", settings).length;
+    const next = nextChoice(kind as "preset", settings, state);
+    const normal = renderKey(kind, state, next, count);
+    const bright = renderKey(kind, state, next, count, "#ffffff");
+    for (let blink = 0; blink < 3; blink += 1) {
+      await this.#setImage(action, bright);
+      await new Promise((resolve) => setTimeout(resolve, 55));
+      await this.#setImage(action, normal);
+      if (blink < 2) await new Promise((resolve) => setTimeout(resolve, 55));
     }
   }
 }

@@ -10,6 +10,7 @@ import {
 
 const current: CodexState = {
   effort: "medium",
+  hostId: "local",
   model: "gpt-5.6-sol",
   threadId: "thread-123",
 };

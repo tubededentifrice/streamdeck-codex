@@ -1,7 +1,7 @@
 {
   "name": "codex-streamdeck",
   "version": "0.1.0",
-  "description": "Stream Deck controls for the selected local Codex task.",
+  "description": "Stream Deck controls for the selected Codex desktop task.",
   "license": "MIT",
   "private": true,
   "engines": {

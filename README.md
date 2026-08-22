@@ -1,7 +1,7 @@
 # Codex Controls for Stream Deck
 
 Codex Controls is a macOS Stream Deck plug-in for the Codex desktop app. It
-changes the model or thinking level for the selected local Codex task.
+changes the model or thinking level for the selected Codex task.
 
 Each key accepts one or more configured values:
 
@@ -13,10 +13,11 @@ a mismatch visible before you press the key.
 
 ## Current scope
 
-This first version controls local Codex tasks only. It does not connect through
-SSH and it does not control remote tasks. Codex desktop interfaces used for task
-control can change between Codex releases. Treat this integration as a local
-compatibility layer, not as a stable public Codex API.
+The plug-in controls local and remote tasks through the Codex desktop app. It
+detects the selected task route automatically. It does not start SSH or require
+host settings. Codex desktop interfaces used for task control can change between
+Codex releases. Treat this integration as a compatibility layer, not as a stable
+public Codex API.
 
 A successful change applies to the selected task's next turn. It does not
 change a response that Codex is already generating.
@@ -81,7 +82,7 @@ and are not committed.
 ## Architecture
 
 - `src/actions/` contains Stream Deck action classes.
-- `src/codex/` contains local Codex task discovery, reads, and updates.
+- `src/codex/` contains Codex task discovery, reads, and updates.
 - `src/ui/` creates key images and status displays.
 - `src/domain/` parses and validates property-inspector settings.
 - `com.courcelle.codex-controls.sdPlugin/` contains the manifest, property
@@ -90,7 +91,7 @@ and are not committed.
 
 Keep Stream Deck events, Codex access, settings, and rendering separate. A new
 control should normally add a value definition and an action without changing
-the local Codex transport.
+the Codex desktop transport.
 
 ## Quality checks
 
@@ -102,8 +103,8 @@ npm run build
 npx streamdeck validate com.courcelle.codex-controls.sdPlugin --no-update-check
 ```
 
-To verify read-only access to the selected local Codex task, keep a task open in
-the Codex desktop app and run:
+To verify access to a local or remote Codex task, start the test and then select
+the task in the Codex desktop app:
 
 ```sh
 npm run smoke:codex

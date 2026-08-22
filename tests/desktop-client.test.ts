@@ -16,6 +16,12 @@ type Router = {
   updateCount: () => number;
 };
 
+type RemoteRouter = {
+  close: () => Promise<void>;
+  home: string;
+  updateTargets: () => Array<string | undefined>;
+};
+
 const THREAD_A = "01a0289e-e3d3-7fc1-8774-bbc3bc4f0712";
 const THREAD_B = "01a0289e-e3d3-7fc1-8774-bbc3bc4f0713";
 const cleanups: Array<() => Promise<void>> = [];
@@ -27,7 +33,7 @@ function frame(value: unknown): Buffer {
   return Buffer.concat([header, payload]);
 }
 
-async function fakeRouter(): Promise<Router> {
+async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-streamdeck-"));
   const ipc = path.join(home, "ipc");
   const socketPath = path.join(ipc, "ipc.sock");
@@ -69,13 +75,21 @@ async function fakeRouter(): Promise<Router> {
               type: "response",
             }),
           );
-          socket.write(
-            frame({
-              method: "thread-stream-following-changed",
-              params: { conversationId: selected, following: true },
-              version: 1,
-            }),
-          );
+          const sendSelection = () =>
+            socket.write(
+              frame({
+                method: "thread-stream-following-changed",
+                params: {
+                  conversationId: selected,
+                  following: true,
+                  hostId: "local",
+                },
+                sourceClientId: "desktop-ui-client",
+                version: 1,
+              }),
+            );
+          if (selectionDelayMs > 0) setTimeout(sendSelection, selectionDelayMs);
+          else sendSelection();
         } else if (
           request.method === "thread-follower-update-thread-settings"
         ) {
@@ -118,12 +132,22 @@ async function fakeRouter(): Promise<Router> {
       Buffer.concat([
         frame({
           method: "thread-stream-following-changed",
-          params: { conversationId: previous, following: false },
+          params: {
+            conversationId: previous,
+            following: false,
+            hostId: "local",
+          },
+          sourceClientId: "desktop-ui-client",
           version: 1,
         }),
         frame({
           method: "thread-stream-following-changed",
-          params: { conversationId: selected, following: true },
+          params: {
+            conversationId: selected,
+            following: true,
+            hostId: "local",
+          },
+          sourceClientId: "desktop-ui-client",
           version: 1,
         }),
       ]),
@@ -139,6 +163,152 @@ async function fakeRouter(): Promise<Router> {
   return { close, home, select, updateCount: () => updates };
 }
 
+async function fakeRemoteRouter(): Promise<RemoteRouter> {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-streamdeck-"));
+  const ipc = path.join(home, "ipc");
+  const socketPath = path.join(ipc, "ipc.sock");
+  fs.mkdirSync(ipc);
+  const database = new DatabaseSync(path.join(home, "state_5.sqlite"));
+  database.exec(
+    "CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT, reasoning_effort TEXT)",
+  );
+
+  const ownerClientId = "remote-owner-client";
+  const hostId = "remote-ssh-discovered:dev";
+  let model = "gpt-5.6-luna";
+  let effort = "high";
+  const targets: Array<string | undefined> = [];
+  let activeSocket: net.Socket | undefined;
+
+  const sendSelection = (socket: net.Socket) => {
+    socket.write(
+      frame({
+        method: "thread-stream-following-changed",
+        params: { conversationId: THREAD_A, following: true, hostId },
+        sourceClientId: "desktop-ui-client",
+        type: "broadcast",
+        version: 1,
+      }),
+    );
+  };
+  const sendSnapshot = (socket: net.Socket) => {
+    socket.write(
+      frame({
+        method: "thread-stream-state-changed",
+        params: {
+          change: {
+            conversationState: {
+              latestModel: model,
+              latestReasoningEffort: null,
+              latestThreadSettings: { effort, model },
+            },
+            type: "snapshot",
+          },
+          conversationId: THREAD_A,
+          hostId,
+        },
+        sourceClientId: ownerClientId,
+        type: "broadcast",
+        version: 11,
+      }),
+    );
+  };
+
+  const server = net.createServer((socket) => {
+    activeSocket = socket;
+    let buffer = Buffer.alloc(0);
+    socket.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= 4) {
+        const length = buffer.readUInt32LE(0);
+        if (buffer.length < length + 4) return;
+        const message = JSON.parse(
+          buffer.subarray(4, length + 4).toString("utf8"),
+        ) as {
+          method: string;
+          params?: {
+            conversationId?: string;
+            following?: boolean;
+            threadSettings?: { effort: string; model: string };
+          };
+          requestId?: string;
+          sourceClientId?: string;
+          targetClientId?: string;
+          type: string;
+        };
+        buffer = buffer.subarray(length + 4);
+
+        if (message.method === "initialize" && message.requestId) {
+          socket.write(
+            frame({
+              requestId: message.requestId,
+              result: { clientId: "streamdeck-client" },
+              resultType: "success",
+              type: "response",
+            }),
+          );
+          sendSelection(socket);
+        } else if (
+          message.method === "thread-stream-following-changed" &&
+          message.type === "broadcast"
+        ) {
+          socket.write(
+            frame({
+              ...message,
+              type: "broadcast",
+            }),
+          );
+        } else if (
+          message.method === "thread-stream-following-status-requested"
+        ) {
+          sendSnapshot(socket);
+        } else if (
+          message.method === "thread-owner-discovery" &&
+          message.requestId
+        ) {
+          socket.write(
+            frame({
+              handledByClientId: ownerClientId,
+              requestId: message.requestId,
+              resultType: "success",
+              type: "response",
+            }),
+          );
+        } else if (
+          message.method === "thread-follower-update-thread-settings" &&
+          message.requestId
+        ) {
+          targets.push(message.targetClientId);
+          model = message.params?.threadSettings?.model ?? model;
+          effort = message.params?.threadSettings?.effort ?? effort;
+          socket.write(
+            frame({
+              requestId: message.requestId,
+              result: { ok: true },
+              resultType: "success",
+              type: "response",
+            }),
+          );
+        }
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  fs.chmodSync(socketPath, 0o600);
+
+  const close = async () => {
+    activeSocket?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    database.close();
+    fs.rmSync(home, { force: true, recursive: true });
+  };
+  cleanups.push(close);
+  return { close, home, updateTargets: () => targets };
+}
+
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
@@ -150,6 +320,7 @@ describe("Codex desktop client", () => {
     const before = await client.readState();
     expect(before).toEqual({
       effort: "medium",
+      hostId: "local",
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
@@ -157,6 +328,7 @@ describe("Codex desktop client", () => {
     const after = await client.update("gpt-5.6-luna", "high", THREAD_A);
     expect(after).toEqual({
       effort: "high",
+      hostId: "local",
       model: "gpt-5.6-luna",
       threadId: THREAD_A,
     });
@@ -175,6 +347,45 @@ describe("Codex desktop client", () => {
       client.update("gpt-5.6-luna", "medium", THREAD_A),
     ).rejects.toThrow("changed before the update");
     expect(router.updateCount()).toBe(0);
+    client.disconnect();
+  });
+
+  it("waits for delayed selected-task discovery", async () => {
+    const router = await fakeRouter(400);
+    const client = new CodexDesktopClient(router.home);
+
+    await expect(client.readState()).resolves.toMatchObject({
+      hostId: "local",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("reads and updates a selected remote task through its live owner", async () => {
+    const router = await fakeRemoteRouter();
+    const client = new CodexDesktopClient(router.home);
+
+    const before = await client.readState();
+    expect(before).toEqual({
+      effort: "high",
+      hostId: "remote-ssh-discovered:dev",
+      model: "gpt-5.6-luna",
+      threadId: THREAD_A,
+    });
+
+    const after = await client.update(
+      "gpt-5.6-sol",
+      "medium",
+      THREAD_A,
+      "remote-ssh-discovered:dev",
+    );
+    expect(after).toEqual({
+      effort: "medium",
+      hostId: "remote-ssh-discovered:dev",
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
+    });
+    expect(router.updateTargets()).toEqual(["remote-owner-client"]);
     client.disconnect();
   });
 });
