@@ -1,0 +1,50 @@
+{
+  "Name": "Codex Controls",
+  "Version": "0.1.0.0",
+  "Author": "Vincent Courcelle",
+  "Actions": [
+    {
+      "Name": "Model",
+      "UUID": "com.courcelle.codex-controls.model",
+      "Icon": "imgs/actions/model/icon",
+      "Tooltip": "Set one model or cycle through configured models for the selected Codex task.",
+      "PropertyInspectorPath": "ui/action.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "imgs/actions/model/key", "TitleAlignment": "middle" }
+      ]
+    },
+    {
+      "Name": "Thinking",
+      "UUID": "com.courcelle.codex-controls.thinking",
+      "Icon": "imgs/actions/thinking/icon",
+      "Tooltip": "Set one thinking level or cycle through configured levels for the selected Codex task.",
+      "PropertyInspectorPath": "ui/action.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "imgs/actions/thinking/key", "TitleAlignment": "middle" }
+      ]
+    },
+    {
+      "Name": "Preset",
+      "UUID": "com.courcelle.codex-controls.preset",
+      "Icon": "imgs/actions/preset/icon",
+      "Tooltip": "Set one model and thinking preset or cycle through configured presets for the selected Codex task.",
+      "PropertyInspectorPath": "ui/action.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "imgs/actions/preset/key", "TitleAlignment": "middle" }
+      ]
+    }
+  ],
+  "Category": "Codex Controls",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "Control the selected local Codex task model and thinking level.",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": { "MinimumVersion": "7.1" },
+  "OS": [{ "Platform": "mac", "MinimumVersion": "12" }],
+  "Nodejs": { "Version": "24", "Debug": "enabled" },
+  "UUID": "com.courcelle.codex-controls"
+}
