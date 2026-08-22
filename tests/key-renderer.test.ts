@@ -73,16 +73,4 @@ describe("key renderer", () => {
     expect(image).toContain("CODEX OFFLINE");
     expect(image).not.toContain("/tmp/private");
   });
-
-  it("shows a clear permission state for the native helper", () => {
-    for (const message of [
-      "Allow Codex Controls Helper in macOS Accessibility settings.",
-      "Allow Codex Controls Helper in macOS Screen Recording settings.",
-    ]) {
-      const image = decodeURIComponent(
-        renderError("preset", new Error(message)),
-      );
-      expect(image).toContain("ALLOW ACCESS");
-    }
-  });
 });

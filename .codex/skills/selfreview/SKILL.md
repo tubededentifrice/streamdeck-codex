@@ -64,10 +64,9 @@ For each changed path, check these areas.
   unavailable sockets, timeouts, malformed responses, and Codex restarts.
 - Check file and socket ownership assumptions. Do not expose tokens, task
   content, local paths, or other sensitive data in logs or key images.
-- For remote tasks, use Codex desktop IPC only. Do not add SSH, host settings,
-  remote command execution, or global-default changes. If IPC is read-only for
-  a remote task, permit exact and verified macOS Accessibility control of the
-  Codex model menu.
+- For remote tasks, use the exact SSH alias that Codex desktop reports. Start
+  only `codex app-server proxy`, validate all route values, and verify the saved
+  task settings. Do not use UI automation or change global defaults.
 - Confirm that updates affect the selected task's next turn only.
 
 ### Stream Deck SDK

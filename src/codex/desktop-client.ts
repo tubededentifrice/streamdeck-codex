@@ -6,7 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type { CodexState } from "../domain/settings";
-import { updateRemoteTaskThroughApp } from "./app-controller";
+import { updateRemoteTaskThroughSsh } from "./remote-app-server";
 
 const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const STATE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -20,7 +20,7 @@ type PendingRequest = {
 };
 
 type RemoteUpdater = (
-  current: Pick<CodexState, "effort" | "model">,
+  current: Pick<CodexState, "effort" | "hostId" | "model" | "threadId">,
   target: Pick<CodexState, "effort" | "model">,
 ) => Promise<void>;
 
@@ -57,7 +57,7 @@ export class CodexDesktopClient {
 
   constructor(
     codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
-    remoteUpdater: RemoteUpdater = updateRemoteTaskThroughApp,
+    remoteUpdater: RemoteUpdater = updateRemoteTaskThroughSsh,
   ) {
     this.#codexHome = codexHome;
     this.#remoteUpdater = remoteUpdater;

@@ -111,11 +111,9 @@ export function renderError(kind: ActionKind, error: unknown): string {
   const message = error instanceof Error ? error.message : "Unknown error";
   const short = message.includes("Select a task")
     ? "SELECT TASK"
-    : message.includes("Accessibility") || message.includes("Screen Recording")
-      ? "ALLOW ACCESS"
-      : message.includes("choice")
-        ? "CHECK SETTINGS"
-        : "CODEX OFFLINE";
+    : message.includes("choice")
+      ? "CHECK SETTINGS"
+      : "CODEX OFFLINE";
   return svg(
     `
 		<text x="72" y="52" text-anchor="middle" fill="#ff5c6c" font-family="-apple-system,Arial,sans-serif" font-size="28" font-weight="900">!</text>

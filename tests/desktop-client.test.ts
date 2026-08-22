@@ -393,7 +393,9 @@ describe("Codex desktop client", () => {
       {
         current: expect.objectContaining({
           effort: "high",
+          hostId: "remote-ssh-discovered:dev",
           model: "gpt-5.6-luna",
+          threadId: THREAD_A,
         }),
         target: { effort: "medium", model: "gpt-5.6-sol" },
       },

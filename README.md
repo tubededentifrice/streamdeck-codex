@@ -14,10 +14,11 @@ a mismatch visible before you press the key.
 ## Current scope
 
 The plug-in controls local and remote tasks through the Codex desktop app. It
-detects the selected task route automatically. It does not start SSH or require
-host settings. Codex desktop interfaces used for task control can change between
-Codex releases. Treat this integration as a compatibility layer, not as a stable
-public Codex API.
+detects the selected task route automatically. For a remote task, it gets the
+SSH alias from Codex and connects to the remote Codex App Server. It does not
+require host settings. Codex interfaces used for task control can change between
+releases. Treat this integration as a compatibility layer, not as a stable public
+Codex API.
 
 A successful change applies to the selected task's next turn. It does not
 change a response that Codex is already generating.
@@ -51,14 +52,12 @@ set.
 - Elgato Stream Deck 7.1 or later
 - Node.js 24
 
-Remote setting changes use the bundled **Codex Controls Helper** because the
-current Codex desktop IPC can report remote state but cannot write it. Allow the
-**Stream Deck** in **System Settings → Privacy & Security → Accessibility** and
-allow **Codex Controls Helper** in **Screen & System Audio Recording** when
-macOS requests access. The helper operates only the selected Codex model menu.
-It recognizes the requested menu label on-device, does not save the captured
-menu image, and verifies each change through IPC. It does not use SSH. These
-permissions are not used for local tasks.
+Remote setting changes use the SSH host alias that Codex reports for the
+selected task. The plug-in opens `codex app-server proxy` through the existing
+SSH configuration. SSH must work without an interactive password prompt, such
+as with an SSH key and agent. The plug-in validates the requested model and
+thinking level and verifies the saved task settings. It does not use
+Accessibility, Screen Recording, OCR, or UI clicks.
 
 ## Development setup
 

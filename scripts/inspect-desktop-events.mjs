@@ -105,7 +105,22 @@ let clientId;
 const initializeId = crypto.randomUUID();
 const requestedThreadId = process.argv[2];
 const requestedHostId = process.argv[3];
-let followRequested = false;
+let activeThreadId = requestedThreadId;
+let activeHostId = requestedHostId;
+
+function follow(threadId, hostId) {
+  activeThreadId = threadId;
+  activeHostId = hostId;
+  broadcast("thread-stream-following-changed", 1, {
+    conversationId: threadId,
+    hostId,
+    following: true,
+  });
+  broadcast("thread-stream-following-status-requested", 1, {
+    conversationId: threadId,
+    hostId,
+  });
+}
 
 function broadcast(method, version, params) {
   socket.write(
@@ -151,16 +166,7 @@ socket.on("data", (chunk) => {
       clientId = message.result?.clientId;
       process.stdout.write("READY — switch to a remote Codex task now.\n");
       if (requestedThreadId && requestedHostId) {
-        followRequested = true;
-        broadcast("thread-stream-following-changed", 1, {
-          conversationId: requestedThreadId,
-          hostId: requestedHostId,
-          following: true,
-        });
-        broadcast("thread-stream-following-status-requested", 1, {
-          conversationId: requestedThreadId,
-          hostId: requestedHostId,
-        });
+        follow(requestedThreadId, requestedHostId);
       }
     } else {
       process.stdout.write(`${JSON.stringify(safeSummary(message))}\n`);
@@ -169,21 +175,17 @@ socket.on("data", (chunk) => {
     if (
       message.method === "thread-stream-following-changed" &&
       message.sourceClientId !== clientId &&
-      !followRequested &&
-      message.params?.conversationId === requestedThreadId &&
-      message.params?.hostId === requestedHostId &&
-      message.params?.following === true
+      message.params?.following === true &&
+      typeof message.params?.conversationId === "string" &&
+      typeof message.params?.hostId === "string" &&
+      message.params.hostId !== "local" &&
+      (!requestedThreadId ||
+        (message.params.conversationId === requestedThreadId &&
+          message.params.hostId === requestedHostId)) &&
+      (message.params.conversationId !== activeThreadId ||
+        message.params.hostId !== activeHostId)
     ) {
-      followRequested = true;
-      broadcast("thread-stream-following-changed", 1, {
-        conversationId: requestedThreadId,
-        hostId: requestedHostId,
-        following: true,
-      });
-      broadcast("thread-stream-following-status-requested", 1, {
-        conversationId: requestedThreadId,
-        hostId: requestedHostId,
-      });
+      follow(message.params.conversationId, message.params.hostId);
     }
 
     if (message.type === "client-discovery-request" && message.requestId) {

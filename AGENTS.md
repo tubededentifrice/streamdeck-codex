@@ -9,9 +9,9 @@
 ## Product scope
 
 - Build the plug-in with the official Elgato Stream Deck SDK and CLI.
-- Support local and remote tasks through Codex desktop IPC. Detect the selected
-  task route automatically. Use verified macOS app control only when desktop IPC
-  cannot write a remote task. Do not add SSH or host settings.
+- Support local and remote tasks. Detect the selected task route through Codex
+  desktop IPC. For a remote task, derive the SSH alias from the Codex host ID and
+  use the remote Codex App Server. Do not add user-facing host settings.
 - A control with one configured value sets that value. A control with two or
   more configured values cycles through them.
 - Show the configured value and the current next-turn value on the key. Make a
