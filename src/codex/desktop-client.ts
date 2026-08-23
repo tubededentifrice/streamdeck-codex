@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import type { CodexState } from "../domain/settings";
 import { sanitizeCodexRoute, type CodexRoute } from "../domain/route";
+import { CodexError } from "./errors";
 import { updateRemoteTaskThroughSsh } from "./remote-app-server";
 
 const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
@@ -59,7 +60,11 @@ export class CodexDesktopClient {
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
   #database: DatabaseSync | undefined;
+  #lastReadyRoute: CodexRoute | undefined;
   #pendingRouteKey: string | undefined;
+  #routeRevision = 0;
+  #selectionClearTimer: ReturnType<typeof setTimeout> | undefined;
+  #selectionResolving = false;
   #selectionSourceClientId: string | undefined;
   readonly #selectionTransitions = new Map<string, number>();
   #socket: net.Socket | undefined;
@@ -74,6 +79,10 @@ export class CodexDesktopClient {
     this.#routeChanged = routeChanged;
   }
 
+  get routeRevision(): number {
+    return this.#routeRevision;
+  }
+
   restoreRoute(value: unknown): void {
     const route = sanitizeCodexRoute(value);
     if (!route || this.#activeRouteKey || this.#pendingRouteKey) return;
@@ -81,7 +90,11 @@ export class CodexDesktopClient {
     this.#followedRoutes.set(key, route);
     if (route.hostId === "local" && !this.#readLocalState(route.threadId))
       this.#pendingRouteKey = key;
-    else this.#activeRouteKey = key;
+    else {
+      this.#activeRouteKey = key;
+      this.#lastReadyRoute = route;
+    }
+    this.#routeRevision += 1;
   }
 
   onChange(listener: () => void): () => void {
@@ -119,8 +132,14 @@ export class CodexDesktopClient {
     );
     if (live) return live;
     if (route.hostId !== "local")
-      throw new Error("Codex did not provide the selected remote task state.");
-    throw new Error("The selected task has no saved model and thinking level.");
+      throw new CodexError(
+        "task-state-unavailable",
+        "Codex did not provide the selected remote task state.",
+      );
+    throw new CodexError(
+      "task-state-unavailable",
+      "The selected task has no saved model and thinking level.",
+    );
   }
 
   #readLocalState(threadId: string): CodexState | undefined {
@@ -270,14 +289,27 @@ export class CodexDesktopClient {
   }
 
   async #selectedRoute(): Promise<{ hostId: string; threadId: string }> {
+    if (this.#selectionResolving || this.#pendingRouteKey)
+      throw new CodexError(
+        "resolving-task",
+        "Codex is resolving the selected task.",
+      );
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const selected = this.#activeRouteKey
         ? this.#followedRoutes.get(this.#activeRouteKey)
         : undefined;
       if (selected) return selected;
+      if (this.#selectionResolving || this.#pendingRouteKey)
+        throw new CodexError(
+          "resolving-task",
+          "Codex is resolving the selected task.",
+        );
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error("Select a task in the Codex desktop app.");
+    throw new CodexError(
+      "select-task",
+      "Select a task in the Codex desktop app.",
+    );
   }
 
   async #readLiveState(
@@ -418,6 +450,12 @@ export class CodexDesktopClient {
               ? message.sourceClientId
               : undefined;
           if (sourceClientId === this.#clientId) continue;
+          const targetedReplay =
+            targeted &&
+            params.following &&
+            !this.#selectionSourceClientId &&
+            !this.#selectionResolving;
+          if (targeted && !targetedReplay) continue;
           if (!targeted) {
             if (sourceClientId && !params.following)
               this.#selectionTransitions.set(sourceClientId, Date.now());
@@ -438,73 +476,54 @@ export class CodexDesktopClient {
               sourceClientId !== this.#selectionSourceClientId
             )
               continue;
-            const route = {
-              hostId: params.hostId,
-              threadId: params.conversationId,
-            };
-            const key = this.#routeKey(route.hostId, route.threadId);
-            if (params.following) {
-              if (sourceClientId) {
-                this.#selectionSourceClientId = sourceClientId;
-                this.#selectionTransitions.delete(sourceClientId);
-              }
-              const isNewRoute = !this.#followedRoutes.has(key);
-              this.#followedRoutes.set(key, route);
-              const knownState = this.#remoteStates.get(key);
-              if (
-                route.hostId === "local" &&
-                !knownState &&
-                !this.#readLocalState(route.threadId)
-              ) {
-                this.#pendingRouteKey = key;
-                this.#requestThreadStatus(route);
-                continue;
-              }
-              const selectedRoute = knownState?.sideConversation
-                ? knownState.parentRoute
-                : route;
-              if (!selectedRoute) {
-                this.#pendingRouteKey = undefined;
-                continue;
-              }
-              const selectedKey = this.#routeKey(
-                selectedRoute.hostId,
-                selectedRoute.threadId,
-              );
-              this.#followedRoutes.set(selectedKey, selectedRoute);
-              const routeChanged = this.#activeRouteKey !== selectedKey;
-              this.#activeRouteKey = selectedKey;
-              this.#pendingRouteKey = undefined;
-              if (routeChanged) this.#routeChanged(selectedRoute);
-              if (
-                selectedRoute.hostId !== "local" &&
-                (isNewRoute || !this.#remoteStates.has(selectedKey))
-              )
-                this.#followRemote(selectedRoute, true);
-              else this.#requestThreadStatus(selectedRoute);
-              if (routeChanged) this.#emitChange();
-            } else {
-              if (this.#pendingRouteKey === key)
-                this.#pendingRouteKey = undefined;
-              if (!this.#followedRoutes.delete(key)) continue;
-              this.#remoteStates.delete(key);
-              if (route.hostId !== "local") this.#followRemote(route, false);
-              if (this.#activeRouteKey === key) {
-                const fallback = [...this.#followedRoutes.entries()]
-                  .reverse()
-                  .find(
-                    ([fallbackKey]) =>
-                      this.#remoteStates.get(fallbackKey)?.sideConversation !==
-                      true,
-                  );
-                this.#activeRouteKey = fallback?.[0];
-                this.#routeChanged(fallback?.[1]);
-                if (fallback && fallback[1].hostId !== "local") {
-                  this.#followRemote(fallback[1], true);
-                }
-                this.#emitChange();
-              }
+          }
+          const route = {
+            hostId: params.hostId,
+            threadId: params.conversationId,
+          };
+          const key = this.#routeKey(route.hostId, route.threadId);
+          if (params.following) {
+            if (sourceClientId) {
+              this.#selectionSourceClientId = sourceClientId;
+              this.#selectionTransitions.delete(sourceClientId);
             }
+            const isNewRoute = !this.#followedRoutes.has(key);
+            this.#followedRoutes.set(key, route);
+            const knownState = this.#remoteStates.get(key);
+            if (
+              route.hostId === "local" &&
+              !knownState &&
+              !this.#readLocalState(route.threadId)
+            ) {
+              this.#beginResolving(key);
+              this.#requestThreadStatus(route);
+              continue;
+            }
+            const selectedRoute = knownState?.sideConversation
+              ? knownState.parentRoute
+              : route;
+            if (!selectedRoute) {
+              this.#beginResolving(key);
+              continue;
+            }
+            this.#selectRoute(selectedRoute);
+            const selectedKey = this.#routeKey(
+              selectedRoute.hostId,
+              selectedRoute.threadId,
+            );
+            if (
+              selectedRoute.hostId !== "local" &&
+              (isNewRoute || !this.#remoteStates.has(selectedKey))
+            )
+              this.#followRemote(selectedRoute, true);
+            else this.#requestThreadStatus(selectedRoute);
+          } else {
+            const wasSelected =
+              this.#activeRouteKey === key || this.#pendingRouteKey === key;
+            this.#followedRoutes.delete(key);
+            this.#remoteStates.delete(key);
+            if (route.hostId !== "local") this.#followRemote(route, false);
+            if (wasSelected) this.#beginNavigation();
           }
         }
       }
@@ -534,12 +553,83 @@ export class CodexDesktopClient {
     }
   }
 
+  #beginNavigation(): void {
+    this.#activeRouteKey = undefined;
+    this.#pendingRouteKey = undefined;
+    this.#selectionResolving = true;
+    this.#routeRevision += 1;
+    this.#emitChange();
+    this.#scheduleSelectionClear(300);
+  }
+
+  #beginResolving(key: string): void {
+    const previousPending = this.#pendingRouteKey;
+    if (previousPending && previousPending !== key) {
+      this.#followedRoutes.delete(previousPending);
+      this.#remoteStates.delete(previousPending);
+    }
+    this.#activeRouteKey = undefined;
+    this.#pendingRouteKey = key;
+    this.#selectionResolving = true;
+    this.#routeRevision += 1;
+    this.#emitChange();
+    this.#scheduleSelectionClear(2500, key);
+  }
+
+  #scheduleSelectionClear(milliseconds: number, pendingKey?: string): void {
+    if (this.#selectionClearTimer) clearTimeout(this.#selectionClearTimer);
+    this.#selectionClearTimer = setTimeout(() => {
+      this.#selectionClearTimer = undefined;
+      if (!this.#selectionResolving) return;
+      if (pendingKey && this.#pendingRouteKey !== pendingKey) return;
+      if (pendingKey) {
+        this.#followedRoutes.delete(pendingKey);
+        this.#remoteStates.delete(pendingKey);
+      }
+      this.#pendingRouteKey = undefined;
+      this.#selectionResolving = false;
+      this.#lastReadyRoute = undefined;
+      this.#routeRevision += 1;
+      this.#routeChanged(undefined);
+      this.#emitChange();
+    }, milliseconds);
+    this.#selectionClearTimer.unref();
+  }
+
+  #selectRoute(route: CodexRoute): void {
+    const key = this.#routeKey(route.hostId, route.threadId);
+    const previousPending = this.#pendingRouteKey;
+    const changed =
+      this.#activeRouteKey !== key ||
+      this.#selectionResolving ||
+      previousPending !== undefined;
+    if (previousPending && previousPending !== key) {
+      this.#followedRoutes.delete(previousPending);
+      this.#remoteStates.delete(previousPending);
+    }
+    if (this.#selectionClearTimer) {
+      clearTimeout(this.#selectionClearTimer);
+      this.#selectionClearTimer = undefined;
+    }
+    this.#followedRoutes.set(key, route);
+    this.#activeRouteKey = key;
+    this.#pendingRouteKey = undefined;
+    this.#selectionResolving = false;
+    this.#lastReadyRoute = route;
+    if (!changed) return;
+    this.#routeRevision += 1;
+    this.#routeChanged(route);
+    this.#emitChange();
+  }
+
   #close(error: Error, preserveRoute = true): void {
     const rememberedKey = this.#activeRouteKey ?? this.#pendingRouteKey;
     const rememberedRoute =
       preserveRoute && rememberedKey
-        ? this.#followedRoutes.get(rememberedKey)
-        : undefined;
+        ? (this.#followedRoutes.get(rememberedKey) ?? this.#lastReadyRoute)
+        : preserveRoute
+          ? this.#lastReadyRoute
+          : undefined;
     const socket = this.#socket;
     const hadConnection = Boolean(
       socket || this.#clientId || this.#followedRoutes.size > 0,
@@ -548,10 +638,16 @@ export class CodexDesktopClient {
     this.#clientId = undefined;
     this.#selectionSourceClientId = undefined;
     this.#selectionTransitions.clear();
+    if (this.#selectionClearTimer) {
+      clearTimeout(this.#selectionClearTimer);
+      this.#selectionClearTimer = undefined;
+    }
+    this.#selectionResolving = false;
     this.#buffer = Buffer.alloc(0);
     this.#activeRouteKey = undefined;
     this.#pendingRouteKey = undefined;
     this.#followedRoutes.clear();
+    this.#lastReadyRoute = undefined;
     this.restoreRoute(rememberedRoute);
     this.#remoteStates.clear();
     if (socket && !socket.destroyed) socket.destroy();
@@ -652,7 +748,6 @@ export class CodexDesktopClient {
           threadId: params.conversationId,
         };
         this.#remoteStates.set(key, next);
-        let routeChanged = false;
         const pendingRoute = this.#pendingRouteKey === key;
         const activeSideRoute =
           next.sideConversation && this.#activeRouteKey === key;
@@ -662,50 +757,32 @@ export class CodexDesktopClient {
         };
         if (next.sideConversation) {
           if (!next.parentRoute) {
-            if (pendingRoute) this.#pendingRouteKey = undefined;
             this.#followedRoutes.delete(key);
             this.#remoteStates.delete(key);
-            if (activeSideRoute) {
-              const fallback = [...this.#followedRoutes.entries()]
-                .reverse()
-                .find(
-                  ([fallbackKey]) =>
-                    this.#remoteStates.get(fallbackKey)?.sideConversation !==
-                    true,
-                );
-              this.#activeRouteKey = fallback?.[0];
-              this.#routeChanged(fallback?.[1]);
+            if (pendingRoute || activeSideRoute) {
+              if (this.#lastReadyRoute) this.#selectRoute(this.#lastReadyRoute);
+              else this.#beginNavigation();
             }
-            this.#emitChange();
             return;
           }
           selectedRoute = next.parentRoute;
-          this.#followedRoutes.set(
-            this.#routeKey(selectedRoute.hostId, selectedRoute.threadId),
-            selectedRoute,
-          );
         }
         if (pendingRoute || activeSideRoute) {
-          this.#activeRouteKey = this.#routeKey(
-            selectedRoute.hostId,
-            selectedRoute.threadId,
-          );
-          this.#pendingRouteKey = undefined;
-          this.#routeChanged(selectedRoute);
+          this.#selectRoute(selectedRoute);
           if (selectedRoute.hostId !== "local")
             this.#followRemote(selectedRoute, true);
           else this.#requestThreadStatus(selectedRoute);
-          routeChanged = true;
+          return;
         }
         if (
-          routeChanged ||
-          !previous ||
-          previous.model !== next.model ||
-          previous.effort !== next.effort ||
-          previous.relayClientId !== next.relayClientId ||
-          previous.sideConversation !== next.sideConversation ||
-          previous.parentRoute?.hostId !== next.parentRoute?.hostId ||
-          previous.parentRoute?.threadId !== next.parentRoute?.threadId
+          this.#activeRouteKey === key &&
+          (!previous ||
+            previous.model !== next.model ||
+            previous.effort !== next.effort ||
+            previous.relayClientId !== next.relayClientId ||
+            previous.sideConversation !== next.sideConversation ||
+            previous.parentRoute?.hostId !== next.parentRoute?.hostId ||
+            previous.parentRoute?.threadId !== next.parentRoute?.threadId)
         )
           this.#emitChange();
       }
@@ -742,7 +819,7 @@ export class CodexDesktopClient {
     }
     if (model !== current.model || effort !== current.effort) {
       this.#remoteStates.set(key, { ...current, effort, model });
-      this.#emitChange();
+      if (this.#activeRouteKey === key) this.#emitChange();
     }
   }
 

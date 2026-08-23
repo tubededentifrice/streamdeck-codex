@@ -83,10 +83,15 @@ class StyleService {
   }
 
   #apply(settings: PluginGlobalSettings): void {
+    const previousStyles = JSON.stringify(
+      sanitizeCustomStyles(this.#settings.customStyles),
+    );
+    const customStyles = sanitizeCustomStyles(settings.customStyles);
     this.#settings = {
       ...settings,
-      customStyles: sanitizeCustomStyles(settings.customStyles),
+      customStyles,
     };
+    if (previousStyles === JSON.stringify(customStyles)) return;
     for (const listener of this.#listeners) listener();
   }
 

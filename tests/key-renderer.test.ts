@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CodexError } from "../src/codex/errors";
 import { renderError, renderKey } from "../src/ui/key-renderer";
 
 describe("key renderer", () => {
@@ -72,5 +73,29 @@ describe("key renderer", () => {
     );
     expect(image).toContain("CODEX OFFLINE");
     expect(image).not.toContain("/tmp/private");
+  });
+
+  it("distinguishes task state and update failures from an offline app", () => {
+    expect(
+      decodeURIComponent(
+        renderError(
+          "preset",
+          new CodexError("resolving-task", "Resolving private task."),
+        ),
+      ),
+    ).toContain("TASK LOADING");
+    expect(
+      decodeURIComponent(
+        renderError(
+          "preset",
+          new CodexError("task-state-unavailable", "Private task state."),
+        ),
+      ),
+    ).toContain("TASK UNREADY");
+    expect(
+      decodeURIComponent(
+        renderError("preset", new Error("Remote update failed."), "update"),
+      ),
+    ).toContain("UPDATE FAILED");
   });
 });

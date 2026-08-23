@@ -107,13 +107,28 @@ export function renderLoading(kind: ActionKind): string {
   );
 }
 
-export function renderError(kind: ActionKind, error: unknown): string {
+export function renderError(
+  kind: ActionKind,
+  error: unknown,
+  context: "refresh" | "update" = "refresh",
+): string {
   const message = error instanceof Error ? error.message : "Unknown error";
-  const short = message.includes("Select a task")
-    ? "SELECT TASK"
-    : message.includes("choice")
-      ? "CHECK SETTINGS"
-      : "CODEX OFFLINE";
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
+  const short =
+    code === "select-task" || message.includes("Select a task")
+      ? "SELECT TASK"
+      : code === "resolving-task"
+        ? "TASK LOADING"
+        : code === "task-state-unavailable"
+          ? "TASK UNREADY"
+          : message.includes("choice")
+            ? "CHECK SETTINGS"
+            : context === "update"
+              ? "UPDATE FAILED"
+              : "CODEX OFFLINE";
   return svg(
     `
 		<text x="72" y="52" text-anchor="middle" fill="#ff5c6c" font-family="-apple-system,Arial,sans-serif" font-size="28" font-weight="900">!</text>

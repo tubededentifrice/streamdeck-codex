@@ -14,6 +14,7 @@ type Router = {
     threadId: string,
     following: boolean,
     sourceClientId?: string,
+    targeted?: boolean,
   ) => void;
   close: () => Promise<void>;
   home: string;
@@ -183,12 +184,14 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
     threadId: string,
     following: boolean,
     sourceClientId = "desktop-ui-client",
+    targeted = false,
   ) => {
     activeSocket?.write(
       frame({
         method: "thread-stream-following-changed",
         params: { conversationId: threadId, following, hostId: "local" },
         sourceClientId,
+        targetClientIds: targeted ? ["stream-deck-client"] : undefined,
         version: 1,
       }),
     );
@@ -497,8 +500,9 @@ describe("Codex desktop client", () => {
     const router = await fakeRouter(-1);
     const client = new CodexDesktopClient(router.home);
     client.restoreRoute({ hostId: "local", threadId: THREAD_C });
-    const state = client.readState();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
     router.snapshot(THREAD_C, {
       effort: "high",
       model: "gpt-5.6-luna",
@@ -506,7 +510,8 @@ describe("Codex desktop client", () => {
       sideConversation: true,
     });
 
-    await expect(state).resolves.toMatchObject({
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
       effort: "medium",
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
@@ -529,6 +534,22 @@ describe("Codex desktop client", () => {
 
     await expect(client.readState()).resolves.toMatchObject({
       hostId: "local",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("uses a targeted startup replay instead of a stale saved route", async () => {
+    const router = await fakeRouter(-1);
+    const client = new CodexDesktopClient(router.home);
+    client.restoreRoute({ hostId: "local", threadId: THREAD_B });
+    await client.connect();
+
+    router.announce(THREAD_A, true, "desktop-ui-client", true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
     client.disconnect();
@@ -671,10 +692,11 @@ describe("Codex desktop client", () => {
     await client.readState();
 
     router.announce(THREAD_C, true);
-    await expect(client.readState()).resolves.toMatchObject({
-      model: "gpt-5.6-sol",
-      threadId: THREAD_A,
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
     });
+    expect(router.updateCount()).toBe(0);
 
     router.snapshot(THREAD_C, {
       effort: "high",
@@ -688,6 +710,50 @@ describe("Codex desktop client", () => {
       effort: "medium",
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("does not expose the old task during a navigation transition", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_A, false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
+
+    router.announce(THREAD_B, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      model: "gpt-5.6-terra",
+      threadId: THREAD_B,
+    });
+    client.disconnect();
+  });
+
+  it("does not restore a superseded unsaved route", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_C, true);
+    router.announce(THREAD_B, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).resolves.toMatchObject({
+      threadId: THREAD_B,
+    });
+
+    router.announce(THREAD_B, false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "select-task",
     });
     client.disconnect();
   });
