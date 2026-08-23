@@ -66,6 +66,7 @@ describe("key renderer", () => {
     expect(image).toContain(">SOL<");
     expect(image).not.toContain(">MODEL<");
     expect(image).not.toContain("NEXT  LUNA");
+    expect(image).toMatch(/y="72"[^>]*dominant-baseline="middle"/);
   });
 
   it("uses only the model label and selected effort for presets", () => {
@@ -123,7 +124,7 @@ describe("key renderer", () => {
     expect(image).not.toContain("IGNORED");
   });
 
-  it("uses separate model and thinking font sizes for presets", () => {
+  it("supports larger font sizes and aligns preset values by their size", () => {
     const image = decodeURIComponent(
       renderKey(
         "preset",
@@ -137,7 +138,7 @@ describe("key renderer", () => {
         1,
         undefined,
         undefined,
-        { modelFontSize: 30, thinkingFontSize: 10 },
+        { modelFontSize: 48, thinkingFontSize: 10 },
         {
           effort: "medium",
           label: "Sol",
@@ -145,8 +146,55 @@ describe("key renderer", () => {
         },
       ),
     );
-    expect(image).toMatch(/font-size="30"[^>]*>SOL<\/text>/);
-    expect(image).toMatch(/font-size="10"[^>]*>MEDIUM<\/text>/);
+    expect(image).toMatch(/y="60"[^>]*font-size="48"[^>]*>SOL<\/text>/);
+    expect(image).toMatch(/y="82\.3"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/);
+
+    const reversed = decodeURIComponent(
+      renderKey(
+        "preset",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        undefined,
+        1,
+        undefined,
+        undefined,
+        { modelFontSize: 10, thinkingFontSize: 48 },
+        {
+          effort: "medium",
+          label: "Sol",
+          model: "gpt-5.6-sol",
+        },
+      ),
+    );
+    expect(reversed).toMatch(/y="46\.7"[^>]*font-size="10"[^>]*>SOL<\/text>/);
+    expect(reversed).toMatch(/y="69"[^>]*font-size="48"[^>]*>MEDIUM<\/text>/);
+  });
+
+  it("limits unexpected font sizes to the supported range", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "model",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        undefined,
+        1,
+        undefined,
+        undefined,
+        { modelFontSize: 100 },
+        { label: "Sol", model: "gpt-5.6-sol" },
+      ),
+    );
+    expect(image).toMatch(
+      /y="64\.5"[^>]*dominant-baseline="middle"[^>]*font-size="48"/,
+    );
   });
 
   it("shows an inactive chat status on three lines", () => {

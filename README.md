@@ -53,9 +53,10 @@ profiles, and devices in the same Stream Deck installation.
 
 The visual color picker shows a static key preview for each color scheme. You
 can hide the action title or the next value. Both items are visible by default.
-You can also set the model and thinking text sizes. A preset key has one size
-for each value. If the current Codex value is not in the configured list, the
-key uses a grey color scheme.
+You can also set the model and thinking text sizes from 10 to 48. The plug-in
+aligns each value for its selected size. A preset key has one size for each
+value. If the current Codex value is not in the configured list, the key uses a
+grey color scheme.
 
 Model keys show the configured model label. Preset keys show the configured
 model label and the selected thinking value. Thinking keys show the selected

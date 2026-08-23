@@ -204,8 +204,27 @@
 
   function validFontSize(value, fallback) {
     return Number.isFinite(value)
-      ? Math.max(10, Math.min(30, Math.round(value)))
+      ? Math.max(10, Math.min(48, Math.round(value)))
       : fallback;
+  }
+
+  function valuePositions(primaryFontSize, secondaryFontSize) {
+    const top = settings.showTitle === false ? 10 : 29;
+    const bottom = settings.showNext === false ? 134 : 100;
+    const center = (top + bottom) / 2;
+    if (secondaryFontSize === undefined) return [center];
+
+    const primaryHeight = primaryFontSize * 0.7;
+    const secondaryHeight = secondaryFontSize * 0.7;
+    const gap = Math.min(
+      4,
+      Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
+    );
+    const blockTop = center - (primaryHeight + gap + secondaryHeight) / 2;
+    return [
+      blockTop + primaryHeight / 2,
+      blockTop + primaryHeight + gap + secondaryHeight / 2,
+    ];
   }
 
   function createKeyPreview(value, style) {
@@ -223,26 +242,30 @@
       kind === "thinking"
         ? (value.effort || "medium").toUpperCase()
         : (value.label || "MODEL").toUpperCase();
+    const primaryFontSize = validFontSize(
+      kind === "thinking" ? settings.thinkingFontSize : settings.modelFontSize,
+      21,
+    );
     current.style.fontSize = `${Math.max(
       7,
-      Math.round(
-        validFontSize(
-          kind === "thinking"
-            ? settings.thinkingFontSize
-            : settings.modelFontSize,
-          21,
-        ) * 0.45,
-      ),
+      Math.round(primaryFontSize * 0.45),
     )}px`;
 
     const secondary = document.createElement("span");
     secondary.className = "preview-secondary";
     secondary.textContent = (value.effort || "medium").toUpperCase();
+    const secondaryFontSize = validFontSize(settings.thinkingFontSize, 18);
     secondary.style.fontSize = `${Math.max(
       7,
-      Math.round(validFontSize(settings.thinkingFontSize, 18) * 0.45),
+      Math.round(secondaryFontSize * 0.45),
     )}px`;
     secondary.hidden = kind !== "preset";
+    const [primaryY, secondaryY] = valuePositions(
+      primaryFontSize,
+      kind === "preset" ? secondaryFontSize : undefined,
+    );
+    current.style.top = `${(primaryY / 144) * 100}%`;
+    secondary.style.top = `${((secondaryY ?? 0) / 144) * 100}%`;
 
     const divider = document.createElement("span");
     divider.className = "preview-divider";
@@ -266,9 +289,6 @@
     divider.hidden = settings.showNext === false;
     next.hidden = settings.showNext === false;
     dot.hidden = settings.showNext === false;
-    preview.classList.toggle("without-next", settings.showNext === false);
-    current.classList.toggle("without-title", settings.showTitle === false);
-    secondary.classList.toggle("without-title", settings.showTitle === false);
     return preview;
   }
 

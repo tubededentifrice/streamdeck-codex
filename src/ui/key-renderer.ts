@@ -88,7 +88,32 @@ function nextLabel(
 
 function fontSize(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.max(10, Math.min(30, Math.round(value)));
+  return Math.max(10, Math.min(48, Math.round(value)));
+}
+
+function valuePositions(
+  showTitle: boolean,
+  showNext: boolean,
+  primaryFontSize: number,
+  secondaryFontSize?: number,
+): [number, number?] {
+  const top = showTitle ? 29 : 10;
+  const bottom = showNext ? 100 : 134;
+  const center = (top + bottom) / 2;
+  if (secondaryFontSize === undefined) return [center];
+
+  const primaryHeight = primaryFontSize * 0.7;
+  const secondaryHeight = secondaryFontSize * 0.7;
+  const gap = Math.min(
+    4,
+    Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
+  );
+  const totalHeight = primaryHeight + gap + secondaryHeight;
+  const blockTop = center - totalHeight / 2;
+  return [
+    Number((blockTop + primaryHeight / 2).toFixed(2)),
+    Number((blockTop + primaryHeight + gap + secondaryHeight / 2).toFixed(2)),
+  ];
 }
 
 export function renderKey(
@@ -106,22 +131,6 @@ export function renderKey(
   const header = kind.toUpperCase();
   const showTitle = display.showTitle !== false;
   const showNext = display.showNext !== false;
-  const primaryY = secondary
-    ? showNext
-      ? showTitle
-        ? 51
-        : 37
-      : showTitle
-        ? 61
-        : 60
-    : showNext
-      ? showTitle
-        ? 62
-        : 55
-      : showTitle
-        ? 78
-        : 77;
-  const secondaryY = showNext ? (showTitle ? 77 : 65) : showTitle ? 89 : 88;
   const accent = style?.borderColor ?? COLORS[kind];
   const font = style?.fontColor ?? "#ffffff";
   const primaryFontSize =
@@ -129,24 +138,30 @@ export function renderKey(
       ? fontSize(display.thinkingFontSize, 21)
       : fontSize(display.modelFontSize, 21);
   const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
+  const [primaryY, secondaryY] = valuePositions(
+    showTitle,
+    showNext,
+    primaryFontSize,
+    secondary ? secondaryFontSize : undefined,
+  );
   const secondaryMarkup = secondary
-    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
+    ? `<text x="72" y="${secondaryY}" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
   const footer = target
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
     : "NO CHOICES";
   const headerMarkup = showTitle
-    ? `<text x="72" y="26" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
+    ? `<text x="72" y="20" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
     : "";
   const footerMarkup = showNext
-    ? `<line x1="20" y1="94" x2="124" y2="94" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="118" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
-		<circle cx="72" cy="130" r="3" fill="${accent}"/>`
+    ? `<line x1="20" y1="102" x2="124" y2="102" stroke="${accent}" stroke-width="2" opacity="0.55"/>
+		<text x="72" y="121" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
+		<circle cx="72" cy="133" r="3" fill="${accent}"/>`
     : "";
   return svg(
     `
 		${headerMarkup}
-		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
+		<text x="72" y="${primaryY}" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
 		${footerMarkup}
 	`,
