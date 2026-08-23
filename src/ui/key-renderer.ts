@@ -120,6 +120,19 @@ function alphabeticBaseline(center: number, size: number): number {
   return Number((center + size * 0.36).toFixed(2));
 }
 
+function stackCenters(sizes: number[], gap: number): number[] {
+  const heights = sizes.map((size) => size * 0.7);
+  const totalHeight =
+    heights.reduce((total, height) => total + height, 0) +
+    Math.max(0, sizes.length - 1) * gap;
+  let top = 72 - totalHeight / 2;
+  return heights.map((height) => {
+    const center = top + height / 2;
+    top += height + gap;
+    return Number(center.toFixed(2));
+  });
+}
+
 export function renderKey(
   kind: ActionKind,
   state: CodexState,
@@ -160,11 +173,11 @@ export function renderKey(
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
     : "NO CHOICES";
   const headerMarkup = showTitle
-    ? `<text x="72" y="20" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
+    ? `<text x="72" y="${alphabeticBaseline(20, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
     : "";
   const footerMarkup = showNext
     ? `<line x1="20" y1="102" x2="124" y2="102" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="121" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
+		<text x="72" y="${alphabeticBaseline(121, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
 		<circle cx="72" cy="133" r="3" fill="${accent}"/>`
     : "";
   return svg(
@@ -185,18 +198,24 @@ export function renderLoading(
   display: DisplayOptions = {},
 ): string {
   const showTitle = display.showTitle !== false;
+  const inactive = status === "NOT IN ACTIVE CHAT";
+  const statusLines = inactive ? ["NOT IN", "ACTIVE", "CHAT"] : [status];
+  const statusSize = inactive ? 15 : 14;
+  const sizes = [
+    ...(showTitle ? [17] : []),
+    ...statusLines.map(() => statusSize),
+  ];
+  const centers = stackCenters(sizes, inactive ? 8 : 12);
+  let centerIndex = 0;
   const header = showTitle
-    ? `<text x="72" y="${status === "NOT IN ACTIVE CHAT" ? 28 : 62}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>`
+    ? `<text x="72" y="${alphabeticBaseline(centers[centerIndex++], 17)}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>`
     : "";
-  const statusMarkup =
-    status === "NOT IN ACTIVE CHAT"
-      ? ["NOT IN", "ACTIVE", "CHAT"]
-          .map(
-            (line, index) =>
-              `<text x="72" y="${(showTitle ? 55 : 43) + index * 24}" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="700">${line}</text>`,
-          )
-          .join("")
-      : `<text x="72" y="${showTitle ? 91 : 78}" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="14">${escapeXml(status)}</text>`;
+  const statusMarkup = statusLines
+    .map(
+      (line) =>
+        `<text x="72" y="${alphabeticBaseline(centers[centerIndex++], statusSize)}" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="${statusSize}"${inactive ? ' font-weight="700"' : ""}>${escapeXml(line)}</text>`,
+    )
+    .join("");
   return svg(
     `
 		${header}
@@ -230,14 +249,15 @@ export function renderError(
           : context === "update"
             ? "UPDATE FAILED"
             : "CODEX OFFLINE";
-  const kindMarkup =
-    display.showTitle !== false
-      ? `<text x="72" y="107" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(kind.toUpperCase())}</text>`
-      : "";
+  const showKind = display.showTitle !== false;
+  const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
+  const kindMarkup = showKind
+    ? `<text x="72" y="${alphabeticBaseline(centers[2], 10)}" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(kind.toUpperCase())}</text>`
+    : "";
   return svg(
     `
-		<text x="72" y="52" text-anchor="middle" fill="#ff5c6c" font-family="-apple-system,Arial,sans-serif" font-size="28" font-weight="900">!</text>
-		<text x="72" y="82" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800">${escapeXml(short)}</text>
+		<text x="72" y="${alphabeticBaseline(centers[0], 28)}" text-anchor="middle" fill="#ff5c6c" font-family="-apple-system,Arial,sans-serif" font-size="28" font-weight="900">!</text>
+		<text x="72" y="${alphabeticBaseline(centers[1], 15)}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800">${escapeXml(short)}</text>
 		${kindMarkup}
 	`,
     "#d64555",

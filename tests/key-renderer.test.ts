@@ -25,6 +25,10 @@ describe("key renderer", () => {
     expect(image).toContain(">SOL<");
     expect(image).not.toContain("SOL 5.6");
     expect(image).toContain("NEXT  LUNA");
+    expect(image).toMatch(/y="25\.4"[^>]*font-size="15"[^>]*>MODEL<\/text>/);
+    expect(image).toMatch(
+      /y="124\.96"[^>]*font-size="11"[^>]*>NEXT[ ]{2}LUNA<\/text>/,
+    );
   });
 
   it("escapes configured labels", () => {
@@ -205,6 +209,10 @@ describe("key renderer", () => {
     expect(image).toContain(">ACTIVE<");
     expect(image).toContain(">CHAT<");
     expect(image).not.toContain("TASK LOADING");
+    expect(image).toMatch(/y="50\.37"[^>]*font-size="17"[^>]*>MODEL<\/text>/);
+    expect(image).toMatch(/y="68\.85"[^>]*font-size="15"[^>]*>NOT IN<\/text>/);
+    expect(image).toMatch(/y="87\.35"[^>]*font-size="15"[^>]*>ACTIVE<\/text>/);
+    expect(image).toMatch(/y="105\.85"[^>]*font-size="15"[^>]*>CHAT<\/text>/);
   });
 
   it("can hide the action title from status displays", () => {
@@ -213,6 +221,9 @@ describe("key renderer", () => {
     );
     expect(image).toContain(">NOT IN<");
     expect(image).not.toContain(">MODEL<");
+    expect(image).toMatch(/y="58\.9"[^>]*font-size="15"[^>]*>NOT IN<\/text>/);
+    expect(image).toMatch(/y="77\.4"[^>]*font-size="15"[^>]*>ACTIVE<\/text>/);
+    expect(image).toMatch(/y="95\.9"[^>]*font-size="15"[^>]*>CHAT<\/text>/);
   });
 
   it("uses a temporary border color for success blinking", () => {
@@ -248,6 +259,11 @@ describe("key renderer", () => {
     );
     expect(image).toContain("CODEX OFFLINE");
     expect(image).not.toContain("/tmp/private");
+    expect(image).toMatch(/y="63\.33"[^>]*font-size="28"[^>]*>!<\/text>/);
+    expect(image).toMatch(
+      /y="83\.7"[^>]*font-size="15"[^>]*>CODEX OFFLINE<\/text>/,
+    );
+    expect(image).toMatch(/y="100\.65"[^>]*font-size="10"[^>]*>PRESET<\/text>/);
   });
 
   it("distinguishes task state and update failures from an offline app", () => {
