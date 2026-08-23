@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CodexDesktopClient } from "../src/codex/desktop-client";
 
@@ -43,6 +43,7 @@ type RemoteRouter = {
   close: () => Promise<void>;
   followRequestCount: () => number;
   home: string;
+  replaceOwner: () => void;
   setStoredState: (model: string, effort: string) => void;
   setState: (model: string, effort: string) => void;
   updateTargets: () => Array<string | undefined>;
@@ -319,7 +320,13 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
   };
 }
 
-async function fakeRemoteRouter(): Promise<RemoteRouter> {
+async function fakeRemoteRouter(
+  options: {
+    applyOwnerUpdate?: boolean;
+    ownerFailureCount?: number;
+    rotateOwnerOnFailure?: boolean;
+  } = {},
+): Promise<RemoteRouter> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-streamdeck-"));
   const ipc = path.join(home, "ipc");
   const socketPath = path.join(ipc, "ipc.sock");
@@ -329,11 +336,12 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     "CREATE TABLE threads (id TEXT PRIMARY KEY, model TEXT, reasoning_effort TEXT)",
   );
 
-  const relayClientId = "desktop-ui-client";
+  let relayClientId = "desktop-ui-client";
   const hostId = "remote-ssh-discovered:dev";
   let model = "gpt-5.6-luna";
   let effort = "high";
   let followRequests = 0;
+  let ownerFailures = options.ownerFailureCount ?? 0;
   const targets: Array<string | undefined> = [];
   let activeSocket: net.Socket | undefined;
 
@@ -412,7 +420,11 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         ) {
           if (message.params?.following === true) {
             followRequests += 1;
-            sendSnapshot(socket);
+            if (
+              !message.targetClientIds ||
+              message.targetClientIds.includes(relayClientId)
+            )
+              sendSnapshot(socket);
           }
           socket.write(
             frame({
@@ -430,8 +442,26 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
           message.requestId
         ) {
           targets.push(message.targetClientId);
-          model = message.params?.threadSettings?.model ?? model;
-          effort = message.params?.threadSettings?.effort ?? effort;
+          if (ownerFailures > 0) {
+            ownerFailures -= 1;
+            if (options.rotateOwnerOnFailure) {
+              relayClientId = "replacement-desktop-ui-client";
+              sendSnapshot(socket);
+            }
+            socket.write(
+              frame({
+                error: "no-client-found",
+                requestId: message.requestId,
+                resultType: "error",
+                type: "response",
+              }),
+            );
+            continue;
+          }
+          if (options.applyOwnerUpdate !== false) {
+            model = message.params?.threadSettings?.model ?? model;
+            effort = message.params?.threadSettings?.effort ?? effort;
+          }
           socket.write(
             frame({
               requestId: message.requestId,
@@ -461,6 +491,10 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     close,
     followRequestCount: () => followRequests,
     home,
+    replaceOwner: () => {
+      relayClientId = "replacement-desktop-ui-client";
+      if (activeSocket) sendSnapshot(activeSocket);
+    },
     setStoredState: (nextModel, nextEffort) => {
       model = nextModel;
       effort = nextEffort;
@@ -957,13 +991,17 @@ describe("Codex desktop client", () => {
 
   it("reads and updates a selected remote task through its live owner", async () => {
     const router = await fakeRemoteRouter();
-    const applied: unknown[] = [];
+    const fallbacks: unknown[] = [];
+    const validations: unknown[] = [];
     const client = new CodexDesktopClient(
       router.home,
       async (current, target) => {
-        applied.push({ current, target });
-        router.setState(target.model, target.effort);
+        fallbacks.push({ current, target });
         return target;
+      },
+      () => undefined,
+      async (current, target) => {
+        validations.push({ current, target });
       },
     );
 
@@ -987,7 +1025,7 @@ describe("Codex desktop client", () => {
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
-    expect(applied).toEqual([
+    expect(validations).toEqual([
       {
         current: expect.objectContaining({
           effort: "high",
@@ -998,7 +1036,8 @@ describe("Codex desktop client", () => {
         target: { effort: "medium", model: "gpt-5.6-sol" },
       },
     ]);
-    expect(router.updateTargets()).toEqual([]);
+    expect(fallbacks).toEqual([]);
+    expect(router.updateTargets()).toEqual(["desktop-ui-client"]);
 
     router.setState("gpt-5.6-luna", "high");
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1006,6 +1045,119 @@ describe("Codex desktop client", () => {
       effort: "high",
       model: "gpt-5.6-luna",
     });
+    client.disconnect();
+  });
+
+  it("refreshes a stale remote owner before it uses SSH", async () => {
+    const router = await fakeRemoteRouter({
+      ownerFailureCount: 1,
+      rotateOwnerOnFailure: true,
+    });
+    const fallback = vi.fn(async (_current, target) => target);
+    const client = new CodexDesktopClient(
+      router.home,
+      fallback,
+      () => undefined,
+      async () => undefined,
+    );
+    await client.readState();
+
+    await expect(
+      client.update(
+        "gpt-5.6-sol",
+        "medium",
+        THREAD_A,
+        "remote-ssh-discovered:dev",
+      ),
+    ).resolves.toMatchObject({ effort: "medium", model: "gpt-5.6-sol" });
+
+    expect(router.updateTargets()).toEqual([
+      "desktop-ui-client",
+      "replacement-desktop-ui-client",
+    ]);
+    expect(fallback).not.toHaveBeenCalled();
+    client.disconnect();
+  });
+
+  it("retargets verification when a remote owner changes", async () => {
+    const router = await fakeRemoteRouter();
+    const fallback = vi.fn(async (_current, target) => target);
+    const client = new CodexDesktopClient(
+      router.home,
+      fallback,
+      () => undefined,
+      async () => undefined,
+    );
+    await client.readState();
+    router.replaceOwner();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(
+      client.update(
+        "gpt-5.6-sol",
+        "medium",
+        THREAD_A,
+        "remote-ssh-discovered:dev",
+      ),
+    ).resolves.toMatchObject({ effort: "medium", model: "gpt-5.6-sol" });
+
+    expect(router.updateTargets()).toEqual(["replacement-desktop-ui-client"]);
+    expect(fallback).not.toHaveBeenCalled();
+    client.disconnect();
+  });
+
+  it("uses SSH only after the remote owner stays unavailable", async () => {
+    const router = await fakeRemoteRouter({ ownerFailureCount: 2 });
+    const fallback = vi.fn(async (_current, target) => {
+      router.setState(target.model, target.effort);
+      return target;
+    });
+    const client = new CodexDesktopClient(
+      router.home,
+      fallback,
+      () => undefined,
+      async () => undefined,
+    );
+    await client.readState();
+
+    await expect(
+      client.update(
+        "gpt-5.6-sol",
+        "medium",
+        THREAD_A,
+        "remote-ssh-discovered:dev",
+      ),
+    ).resolves.toMatchObject({ effort: "medium", model: "gpt-5.6-sol" });
+
+    expect(router.updateTargets()).toEqual([
+      "desktop-ui-client",
+      "desktop-ui-client",
+    ]);
+    expect(fallback).toHaveBeenCalledOnce();
+    client.disconnect();
+  });
+
+  it("does not report an unverified remote owner update as successful", async () => {
+    const router = await fakeRemoteRouter({ applyOwnerUpdate: false });
+    const fallback = vi.fn(async (_current, target) => target);
+    const client = new CodexDesktopClient(
+      router.home,
+      fallback,
+      () => undefined,
+      async () => undefined,
+    );
+    await client.readState();
+
+    await expect(
+      client.update(
+        "gpt-5.6-sol",
+        "medium",
+        THREAD_A,
+        "remote-ssh-discovered:dev",
+      ),
+    ).rejects.toThrow("did not confirm the remote settings update");
+
+    expect(fallback).not.toHaveBeenCalled();
     client.disconnect();
   });
 

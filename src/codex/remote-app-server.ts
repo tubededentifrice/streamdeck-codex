@@ -30,6 +30,7 @@ type SshFailure =
 
 export type RemoteAppServerClient = {
   close: () => void;
+  validate: (target: Pick<CodexState, "effort" | "model">) => Promise<void>;
   update: (
     threadId: string,
     target: Pick<CodexState, "effort" | "model">,
@@ -266,6 +267,49 @@ export class SshAppServerClient implements RemoteAppServerClient {
   ): Promise<Pick<CodexState, "effort" | "model">> {
     if (!THREAD_ID.test(threadId))
       throw new Error("The selected task ID is invalid.");
+    await this.validate(target);
+    await this.#request("thread/resume", {
+      excludeTurns: true,
+      threadId,
+    });
+    await this.#request("thread/settings/update", {
+      effort: target.effort,
+      model: target.model,
+      threadId,
+    });
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const read = (await this.#request("thread/resume", {
+        excludeTurns: true,
+        threadId,
+      })) as
+        | {
+            effort?: unknown;
+            model?: unknown;
+            reasoningEffort?: unknown;
+            thread?: {
+              effort?: unknown;
+              model?: unknown;
+              reasoningEffort?: unknown;
+            };
+          }
+        | undefined;
+      const modelValue = read?.model ?? read?.thread?.model;
+      const effortValue =
+        read?.reasoningEffort ??
+        read?.effort ??
+        read?.thread?.reasoningEffort ??
+        read?.thread?.effort;
+      if (modelValue === target.model && effortValue === target.effort)
+        return { effort: target.effort, model: target.model };
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(
+      "The remote Codex App Server did not save the requested settings.",
+    );
+  }
+
+  async validate(target: Pick<CodexState, "effort" | "model">): Promise<void> {
     await this.connect();
     const models = (await this.#request("model/list", {
       includeHidden: false,
@@ -293,38 +337,6 @@ export class SshAppServerClient implements RemoteAppServerClient {
       throw new RemoteRequestRejectedError(
         `${target.model} does not offer ${target.effort} thinking on the remote host.`,
       );
-
-    await this.#request("thread/settings/update", {
-      effort: target.effort,
-      model: target.model,
-      threadId,
-    });
-    const read = (await this.#request("thread/resume", {
-      excludeTurns: true,
-      threadId,
-    })) as
-      | {
-          effort?: unknown;
-          model?: unknown;
-          reasoningEffort?: unknown;
-          thread?: {
-            effort?: unknown;
-            model?: unknown;
-            reasoningEffort?: unknown;
-          };
-        }
-      | undefined;
-    const modelValue = read?.model ?? read?.thread?.model;
-    const effortValue =
-      read?.reasoningEffort ??
-      read?.effort ??
-      read?.thread?.reasoningEffort ??
-      read?.thread?.effort;
-    if (modelValue !== target.model || effortValue !== target.effort)
-      throw new Error(
-        "The remote Codex App Server did not save the requested settings.",
-      );
-    return { effort: target.effort, model: target.model };
   }
 
   close(): void {
@@ -565,6 +577,32 @@ export class RemoteTaskUpdater {
     );
   }
 
+  async validate(
+    current: Pick<CodexState, "hostId">,
+    target: Pick<CodexState, "effort" | "model">,
+  ): Promise<void> {
+    const host = sshAliasFromHostId(current.hostId);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const client = await this.#client(host);
+        await client.validate(target);
+        this.#refreshIdleTimer(host, client);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (error instanceof RemoteRequestRejectedError) throw error;
+        this.#remove(host);
+      }
+    }
+    throw new Error(
+      `Codex could not validate the selected remote task through SSH. Last failure: ${safeFailureDetail(lastError)}`,
+      {
+        cause: lastError,
+      },
+    );
+  }
+
   close(): void {
     for (const host of [...this.#clients.keys()]) this.#remove(host);
   }
@@ -606,4 +644,11 @@ export function updateRemoteTaskThroughSsh(
   target: Pick<CodexState, "effort" | "model">,
 ): Promise<Pick<CodexState, "effort" | "model">> {
   return remoteTaskUpdater.update(current, target);
+}
+
+export function validateRemoteTaskThroughSsh(
+  current: Pick<CodexState, "hostId">,
+  target: Pick<CodexState, "effort" | "model">,
+): Promise<void> {
+  return remoteTaskUpdater.validate(current, target);
 }
