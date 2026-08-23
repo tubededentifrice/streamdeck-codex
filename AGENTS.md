@@ -50,4 +50,5 @@
 - Run all quality gates that apply to the changed files.
 - Commit completed work directly to `main`. Do not leave finished work only in
   the working tree.
+- Push each commit immediately after it succeeds. Do not delay or batch pushes.
 - Use a focused commit message that states the user-visible result.
