@@ -60,7 +60,13 @@ export const BUILT_IN_STYLES: readonly KeyStyle[] = Object.freeze([
   createBuiltIn("Gold", "#FACC15", "#422006", "#FEFCE8"),
 ]);
 
-export const NEUTRAL_STYLE = BUILT_IN_STYLES[12];
+export const NEUTRAL_STYLE: KeyStyle = Object.freeze({
+  backgroundColor: "#303030",
+  borderColor: "#A3A3A3",
+  fontColor: "#F5F5F5",
+  id: "fallback:unconfigured",
+  name: "Unconfigured",
+});
 
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 const CUSTOM_ID_PATTERN = /^custom:[A-Za-z0-9][A-Za-z0-9_-]{0,56}$/;

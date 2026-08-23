@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CodexError } from "../src/codex/errors";
-import { renderError, renderKey } from "../src/ui/key-renderer";
+import { renderError, renderKey, renderLoading } from "../src/ui/key-renderer";
 
 describe("key renderer", () => {
   it("shows the current and next model", () => {
@@ -38,6 +38,46 @@ describe("key renderer", () => {
     );
     expect(image).toContain("A&amp;B&lt;");
     expect(image).not.toContain("A&B<");
+  });
+
+  it("can hide the action title and next value", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "model",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        { label: "Luna", model: "gpt-5.6-luna" },
+        2,
+        undefined,
+        undefined,
+        { showNext: false, showTitle: false },
+      ),
+    );
+    expect(image).toContain("SOL 5.6");
+    expect(image).not.toContain(">MODEL<");
+    expect(image).not.toContain("NEXT  LUNA");
+  });
+
+  it("shows an inactive chat status on three lines", () => {
+    const image = decodeURIComponent(
+      renderLoading("model", "NOT IN ACTIVE CHAT"),
+    );
+    expect(image).toContain(">NOT IN<");
+    expect(image).toContain(">ACTIVE<");
+    expect(image).toContain(">CHAT<");
+    expect(image).not.toContain("TASK LOADING");
+  });
+
+  it("can hide the action title from status displays", () => {
+    const image = decodeURIComponent(
+      renderLoading("model", "NOT IN ACTIVE CHAT", { showTitle: false }),
+    );
+    expect(image).toContain(">NOT IN<");
+    expect(image).not.toContain(">MODEL<");
   });
 
   it("uses a temporary border color for success blinking", () => {
@@ -83,7 +123,7 @@ describe("key renderer", () => {
           new CodexError("resolving-task", "Resolving private task."),
         ),
       ),
-    ).toContain("TASK LOADING");
+    ).toContain(">NOT IN<");
     expect(
       decodeURIComponent(
         renderError(

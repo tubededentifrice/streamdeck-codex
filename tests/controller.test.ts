@@ -64,7 +64,7 @@ function fakeStyles() {
 }
 
 describe("Codex controller refresh", () => {
-  it("shows task loading instead of the previous task during navigation", async () => {
+  it("shows the inactive chat status instead of the previous task during navigation", async () => {
     let listener: () => void = () => undefined;
     let routeRevision = 1;
     let resolving = false;
@@ -98,7 +98,9 @@ describe("Codex controller refresh", () => {
     listener();
 
     await vi.waitFor(() => {
-      expect(images.at(-1)).toContain("TASK%20LOADING");
+      expect(images.at(-1)).toContain("NOT%20IN");
+      expect(images.at(-1)).toContain("ACTIVE");
+      expect(images.at(-1)).toContain("CHAT");
     });
     expect(images.at(-1)).not.toContain("SOL%205.6");
   });

@@ -18,6 +18,8 @@ export type PresetChoice = {
 export type ActionSettings = JsonObject & {
   models?: ModelChoice[];
   presets?: PresetChoice[];
+  showNext?: boolean;
+  showTitle?: boolean;
   thinking?: ThinkingChoice[];
 };
 
@@ -82,10 +84,12 @@ function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
 }
 
 export function defaultsFor(kind: ActionKind): ActionSettings {
-  if (kind === "model") return { models: structuredClone(DEFAULT_MODELS) };
+  const display = { showNext: true, showTitle: true };
+  if (kind === "model")
+    return { ...display, models: structuredClone(DEFAULT_MODELS) };
   if (kind === "thinking")
-    return { thinking: structuredClone(DEFAULT_THINKING) };
-  return { presets: structuredClone(DEFAULT_PRESETS) };
+    return { ...display, thinking: structuredClone(DEFAULT_THINKING) };
+  return { ...display, presets: structuredClone(DEFAULT_PRESETS) };
 }
 
 export function choicesFor(

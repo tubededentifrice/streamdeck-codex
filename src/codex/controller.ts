@@ -94,7 +94,7 @@ export class CodexController {
     const routeRevision = this.#client.routeRevision;
     const operation = Symbol(action.id);
     this.#busy.set(action.id, { operation, routeRevision });
-    await this.#setImage(action, renderLoading(kind));
+    await this.#setImage(action, renderLoading(kind, undefined, settings));
     try {
       const selected = await this.#client.readState();
       if (routeRevision !== this.#client.routeRevision)
@@ -145,7 +145,10 @@ export class CodexController {
         routeRevision === this.#client.routeRevision
       ) {
         streamDeck.logger.error(`Codex setting update failed: ${detail}`);
-        await this.#setImage(action, renderError(kind, error, "update"));
+        await this.#setImage(
+          action,
+          renderError(kind, error, "update", settings),
+        );
         await this.#showAlert(action);
       } else {
         streamDeck.logger.info(
@@ -183,10 +186,13 @@ export class CodexController {
         isResolvingTaskError(error)
       ) {
         await Promise.all(
-          [...this.#visible.values()].map(({ action, kind }) =>
+          [...this.#visible.values()].map(({ action, kind, settings }) =>
             this.#busy.get(action.id)?.routeRevision === routeRevision
               ? Promise.resolve()
-              : this.#setImage(action, renderLoading(kind, "TASK LOADING")),
+              : this.#setImage(
+                  action,
+                  renderLoading(kind, "NOT IN ACTIVE CHAT", settings),
+                ),
           ),
         );
         return;
@@ -203,10 +209,13 @@ export class CodexController {
         streamDeck.logger.error(`Codex key refresh failed: ${detail}`);
       }
       await Promise.all(
-        [...this.#visible.values()].map(({ action, kind }) =>
+        [...this.#visible.values()].map(({ action, kind, settings }) =>
           this.#busy.get(action.id)?.routeRevision === routeRevision
             ? Promise.resolve()
-            : this.#setImage(action, renderError(kind, error)),
+            : this.#setImage(
+                action,
+                renderError(kind, error, "refresh", settings),
+              ),
         ),
       );
       return;
@@ -231,7 +240,7 @@ export class CodexController {
         );
         await this.#setImage(
           action,
-          renderKey(kind, state, next, count, style),
+          renderKey(kind, state, next, count, style, undefined, settings),
         );
       }),
     );
@@ -282,8 +291,24 @@ export class CodexController {
     const count = choicesFor(kind as "preset", settings).length;
     const next = nextChoice(kind as "preset", settings, state);
     const style = activeStyleFor(kind, settings, state, this.#styles.settings);
-    const normal = renderKey(kind, state, next, count, style);
-    const bright = renderKey(kind, state, next, count, style, "#ffffff");
+    const normal = renderKey(
+      kind,
+      state,
+      next,
+      count,
+      style,
+      undefined,
+      settings,
+    );
+    const bright = renderKey(
+      kind,
+      state,
+      next,
+      count,
+      style,
+      "#ffffff",
+      settings,
+    );
     for (let blink = 0; blink < 3; blink += 1) {
       await this.#setImage(action, bright);
       await new Promise((resolve) => setTimeout(resolve, 55));

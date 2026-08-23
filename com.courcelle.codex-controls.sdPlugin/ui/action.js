@@ -90,6 +90,7 @@
         JSON.stringify({ event: registerEvent, uuid: inspectorId }),
       );
       sendToPlugin({ type: "styles/get" });
+      renderDisplayOptions();
       render();
     });
     websocket.addEventListener("message", (event) => {
@@ -183,6 +184,44 @@
     return [...styleCatalog.builtInStyles, ...styleCatalog.customStyles];
   }
 
+  function renderDisplayOptions() {
+    document.querySelector("#show-title").checked =
+      settings.showTitle !== false;
+    document.querySelector("#show-next").checked = settings.showNext !== false;
+  }
+
+  function createKeyPreview() {
+    const preview = document.createElement("div");
+    preview.className = "key-preview";
+    preview.setAttribute("role", "img");
+    preview.setAttribute("aria-label", "Static key preview");
+
+    const title = document.createElement("span");
+    title.className = "preview-title";
+    title.textContent = kind.toUpperCase();
+
+    const current = document.createElement("span");
+    current.className = "preview-current";
+    current.textContent = kind === "thinking" ? "MEDIUM" : "SOL 5.6";
+
+    const secondary = document.createElement("span");
+    secondary.className = "preview-secondary";
+    secondary.textContent = "MEDIUM";
+    secondary.hidden = kind !== "preset";
+
+    const divider = document.createElement("span");
+    divider.className = "preview-divider";
+
+    const next = document.createElement("span");
+    next.className = "preview-next";
+    next.textContent = kind === "thinking" ? "NEXT HIGH" : "NEXT LUNA";
+
+    const dot = document.createElement("span");
+    dot.className = "preview-dot";
+    preview.append(title, current, secondary, divider, next, dot);
+    return { current, divider, dot, next, preview, secondary, title };
+  }
+
   function styleRow(container, value, index) {
     const row = document.createElement("div");
     row.className = "style-field";
@@ -220,21 +259,40 @@
       option.selected = true;
       select.prepend(option);
     }
-    const swatch = document.createElement("span");
-    swatch.className = "swatch";
-    const updateSwatch = () => {
+    const keyPreview = createKeyPreview();
+    const updatePreview = () => {
       const style = allStyles().find((item) => item.id === select.value);
-      swatch.style.background = style?.backgroundColor || "#0f172a";
-      swatch.style.border = `3px solid ${style?.borderColor || "#94a3b8"}`;
-      swatch.style.color = style?.fontColor || "#f8fafc";
+      const backgroundColor = style?.backgroundColor || "#303030";
+      const borderColor = style?.borderColor || "#a3a3a3";
+      keyPreview.preview.style.background = backgroundColor;
+      keyPreview.preview.style.borderColor = borderColor;
+      keyPreview.preview.style.color = style?.fontColor || "#f5f5f5";
+      keyPreview.divider.style.background = borderColor;
+      keyPreview.dot.style.background = borderColor;
+      keyPreview.title.hidden = settings.showTitle === false;
+      keyPreview.divider.hidden = settings.showNext === false;
+      keyPreview.next.hidden = settings.showNext === false;
+      keyPreview.dot.hidden = settings.showNext === false;
+      keyPreview.preview.classList.toggle(
+        "without-next",
+        settings.showNext === false,
+      );
+      keyPreview.current.classList.toggle(
+        "without-title",
+        settings.showTitle === false,
+      );
+      keyPreview.secondary.classList.toggle(
+        "without-title",
+        settings.showTitle === false,
+      );
     };
     select.addEventListener("change", () => {
       value.styleId = select.value;
-      updateSwatch();
+      updatePreview();
       save();
     });
-    updateSwatch();
-    row.append(labelElement, select, swatch);
+    updatePreview();
+    row.append(labelElement, select, keyPreview.preview);
     container.append(row);
   }
 
@@ -307,6 +365,17 @@
     render();
     save();
   });
+
+  for (const [selector, setting] of [
+    ["#show-title", "showTitle"],
+    ["#show-next", "showNext"],
+  ]) {
+    document.querySelector(selector).addEventListener("change", (event) => {
+      settings[setting] = event.currentTarget.checked;
+      render();
+      save();
+    });
+  }
 
   const customSelect = document.querySelector("#custom-style");
   const styleName = document.querySelector("#style-name");

@@ -7,6 +7,11 @@ import type {
 } from "../domain/settings";
 import type { KeyStyle } from "../domain/styles";
 
+type DisplayOptions = {
+  showNext?: boolean;
+  showTitle?: boolean;
+};
+
 const COLORS: Record<ActionKind, string> = {
   model: "#2f80ed",
   preset: "#7b61ff",
@@ -70,38 +75,79 @@ export function renderKey(
   choiceCount: number,
   style?: KeyStyle,
   borderColor?: string,
+  display: DisplayOptions = {},
 ): string {
   const [primary, secondary] = currentLines(kind, state);
   const target = nextLabel(kind, next);
   const header = kind.toUpperCase();
-  const primaryY = secondary ? 51 : 62;
+  const showTitle = display.showTitle !== false;
+  const showNext = display.showNext !== false;
+  const primaryY = secondary
+    ? showNext
+      ? showTitle
+        ? 51
+        : 37
+      : showTitle
+        ? 61
+        : 60
+    : showNext
+      ? showTitle
+        ? 62
+        : 55
+      : showTitle
+        ? 78
+        : 77;
+  const secondaryY = showNext ? (showTitle ? 77 : 65) : showTitle ? 89 : 88;
   const accent = style?.borderColor ?? COLORS[kind];
   const font = style?.fontColor ?? "#ffffff";
   const secondaryMarkup = secondary
-    ? `<text x="72" y="77" text-anchor="middle" fill="${font}" font-size="18" font-weight="700">${escapeXml(secondary)}</text>`
+    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-size="18" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
   const footer = target
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
     : "NO CHOICES";
+  const headerMarkup = showTitle
+    ? `<text x="72" y="26" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
+    : "";
+  const footerMarkup = showNext
+    ? `<line x1="20" y1="94" x2="124" y2="94" stroke="${accent}" stroke-width="2" opacity="0.55"/>
+		<text x="72" y="118" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
+		<circle cx="72" cy="130" r="3" fill="${accent}"/>`
+    : "";
   return svg(
     `
-		<text x="72" y="26" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>
+		${headerMarkup}
 		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="21" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
-		<line x1="20" y1="94" x2="124" y2="94" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="118" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
-		<circle cx="72" cy="130" r="3" fill="${accent}"/>
+		${footerMarkup}
 	`,
     borderColor ?? accent,
     style?.backgroundColor,
   );
 }
 
-export function renderLoading(kind: ActionKind, status = "UPDATING…"): string {
+export function renderLoading(
+  kind: ActionKind,
+  status = "UPDATING…",
+  display: DisplayOptions = {},
+): string {
+  const showTitle = display.showTitle !== false;
+  const header = showTitle
+    ? `<text x="72" y="${status === "NOT IN ACTIVE CHAT" ? 28 : 62}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>`
+    : "";
+  const statusMarkup =
+    status === "NOT IN ACTIVE CHAT"
+      ? ["NOT IN", "ACTIVE", "CHAT"]
+          .map(
+            (line, index) =>
+              `<text x="72" y="${(showTitle ? 55 : 43) + index * 24}" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="700">${line}</text>`,
+          )
+          .join("")
+      : `<text x="72" y="${showTitle ? 91 : 78}" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="14">${escapeXml(status)}</text>`;
   return svg(
     `
-		<text x="72" y="62" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>
-		<text x="72" y="91" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="14">${escapeXml(status)}</text>
+		${header}
+		${statusMarkup}
 	`,
     COLORS[kind],
   );
@@ -111,29 +157,35 @@ export function renderError(
   kind: ActionKind,
   error: unknown,
   context: "refresh" | "update" = "refresh",
+  display: DisplayOptions = {},
 ): string {
   const message = error instanceof Error ? error.message : "Unknown error";
   const code =
     error && typeof error === "object" && "code" in error
       ? error.code
       : undefined;
+  if (code === "resolving-task")
+    return renderLoading(kind, "NOT IN ACTIVE CHAT", display);
+
   const short =
     code === "select-task" || message.includes("Select a task")
       ? "SELECT TASK"
-      : code === "resolving-task"
-        ? "TASK LOADING"
-        : code === "task-state-unavailable"
-          ? "TASK UNREADY"
-          : message.includes("choice")
-            ? "CHECK SETTINGS"
-            : context === "update"
-              ? "UPDATE FAILED"
-              : "CODEX OFFLINE";
+      : code === "task-state-unavailable"
+        ? "TASK UNREADY"
+        : message.includes("choice")
+          ? "CHECK SETTINGS"
+          : context === "update"
+            ? "UPDATE FAILED"
+            : "CODEX OFFLINE";
+  const kindMarkup =
+    display.showTitle !== false
+      ? `<text x="72" y="107" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(kind.toUpperCase())}</text>`
+      : "";
   return svg(
     `
 		<text x="72" y="52" text-anchor="middle" fill="#ff5c6c" font-family="-apple-system,Arial,sans-serif" font-size="28" font-weight="900">!</text>
 		<text x="72" y="82" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800">${escapeXml(short)}</text>
-		<text x="72" y="107" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(kind.toUpperCase())}</text>
+		${kindMarkup}
 	`,
     "#d64555",
   );

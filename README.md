@@ -51,6 +51,10 @@ and text. The plug-in includes 16 fixed presets. You can save custom presets in
 **Manage custom colors**. Custom presets are shared by all Codex Controls keys,
 profiles, and devices in the same Stream Deck installation.
 
+The color selector shows a static preview of the key. You can hide the action
+title or the next value. Both items are visible by default. If the current Codex
+value is not in the configured list, the key uses a grey color scheme.
+
 One value makes a direct set key. Two or more values make a cycle key. If the
 current value is not in the list, the first press selects the first value. The
 key always shows the live current value and the value that the next press will

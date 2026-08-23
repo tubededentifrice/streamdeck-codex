@@ -20,6 +20,10 @@ describe("choice settings", () => {
     expect(choicesFor("model", defaultsFor("model"))).toHaveLength(2);
     expect(choicesFor("thinking", defaultsFor("thinking"))).toHaveLength(2);
     expect(choicesFor("preset", defaultsFor("preset"))).toHaveLength(2);
+    expect(defaultsFor("model")).toMatchObject({
+      showNext: true,
+      showTitle: true,
+    });
   });
 
   it("sets the only configured value directly", () => {

@@ -31,6 +31,29 @@ p {
 .choice:first-child {
   padding-top: 2px;
 }
+.display-options {
+  border: 1px solid #4d4d4d;
+  display: flex;
+  gap: 12px;
+  margin: 0 0 9px;
+  padding: 7px 9px 8px;
+}
+.display-options legend {
+  color: #d0d0d0;
+  padding: 0 4px;
+}
+.display-options label {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  text-align: left;
+}
+.display-options input {
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  width: 14px;
+}
 .row {
   align-items: center;
   display: grid;
@@ -42,13 +65,67 @@ p {
   align-items: center;
   display: grid;
   gap: 7px;
-  grid-template-columns: 58px 1fr 28px;
+  grid-template-columns: 58px 1fr 72px;
   margin: 5px 0;
 }
-.swatch {
-  border-radius: 5px;
-  height: 25px;
-  width: 28px;
+.key-preview {
+  align-items: center;
+  border: 3px solid;
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  height: 72px;
+  justify-self: end;
+  overflow: hidden;
+  padding: 4px 7px;
+  width: 72px;
+}
+.preview-title {
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  line-height: 9px;
+}
+.preview-current {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.preview-current.without-title {
+  margin-top: 8px;
+}
+.key-preview.without-next .preview-current {
+  margin-top: 13px;
+}
+.key-preview.without-next .preview-current.without-title {
+  margin-top: 20px;
+}
+.preview-secondary {
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 9px;
+}
+.preview-secondary.without-title {
+  line-height: 12px;
+}
+.preview-divider {
+  height: 1px;
+  margin-top: auto;
+  opacity: 0.65;
+  width: 48px;
+}
+.preview-next {
+  font-size: 6px;
+  font-weight: 700;
+  line-height: 11px;
+  white-space: nowrap;
+}
+.preview-dot {
+  border-radius: 50%;
+  height: 3px;
+  width: 3px;
 }
 label {
   color: #d0d0d0;

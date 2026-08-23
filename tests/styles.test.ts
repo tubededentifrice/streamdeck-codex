@@ -86,7 +86,14 @@ describe("key styles", () => {
       ["Crimson", "#F43F5E", "#3F0712", "#FFF1F2"],
       ["Gold", "#FACC15", "#422006", "#FEFCE8"],
     ]);
-    expect(NEUTRAL_STYLE.id).toBe("builtin:slate");
+    expect(NEUTRAL_STYLE).toEqual({
+      backgroundColor: "#303030",
+      borderColor: "#A3A3A3",
+      fontColor: "#F5F5F5",
+      id: "fallback:unconfigured",
+      name: "Unconfigured",
+    });
+    expect(Object.isFrozen(NEUTRAL_STYLE)).toBe(true);
   });
 
   it("keeps built-in text and borders distinct from their backgrounds", () => {
