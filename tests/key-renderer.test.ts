@@ -66,7 +66,7 @@ describe("key renderer", () => {
     expect(image).toContain(">SOL<");
     expect(image).not.toContain(">MODEL<");
     expect(image).not.toContain("NEXT  LUNA");
-    expect(image).toMatch(/y="72"[^>]*dominant-baseline="middle"/);
+    expect(image).toMatch(/y="72"[^>]*dominant-baseline="central"/);
   });
 
   it("uses only the model label and selected effort for presets", () => {
@@ -146,8 +146,12 @@ describe("key renderer", () => {
         },
       ),
     );
-    expect(image).toMatch(/y="60"[^>]*font-size="48"[^>]*>SOL<\/text>/);
-    expect(image).toMatch(/y="82\.3"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/);
+    expect(image).toMatch(
+      /y="60"[^>]*dominant-baseline="central"[^>]*font-size="48"[^>]*>SOL<\/text>/,
+    );
+    expect(image).toMatch(
+      /y="82\.3"[^>]*dominant-baseline="central"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/,
+    );
 
     const reversed = decodeURIComponent(
       renderKey(
@@ -193,7 +197,7 @@ describe("key renderer", () => {
       ),
     );
     expect(image).toMatch(
-      /y="64\.5"[^>]*dominant-baseline="middle"[^>]*font-size="48"/,
+      /y="64\.5"[^>]*dominant-baseline="central"[^>]*font-size="48"/,
     );
   });
 

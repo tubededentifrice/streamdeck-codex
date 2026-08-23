@@ -145,7 +145,7 @@ export function renderKey(
     secondary ? secondaryFontSize : undefined,
   );
   const secondaryMarkup = secondary
-    ? `<text x="72" y="${secondaryY}" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
+    ? `<text x="72" y="${secondaryY}" dominant-baseline="central" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
   const footer = target
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
@@ -161,7 +161,7 @@ export function renderKey(
   return svg(
     `
 		${headerMarkup}
-		<text x="72" y="${primaryY}" dominant-baseline="middle" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
+		<text x="72" y="${primaryY}" dominant-baseline="central" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
 		${footerMarkup}
 	`,
