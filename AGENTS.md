@@ -23,6 +23,8 @@
   rendering.
 - Store custom color presets in Stream Deck global plug-in settings. Keep the 16
   built-in presets immutable.
+- Treat a Codex desktop side chat as its parent task until the checks in
+  `docs/side-chat-support.md` prove independent control is safe.
 
 ## Development
 
@@ -37,6 +39,9 @@
 - Do not commit generated `bin/`, log, dependency, coverage, or packaged plug-in
   files.
 - Do not add secrets or local Codex data to the repository.
+- Retest side-chat support after a Codex desktop release changes task or chat
+  navigation, and at least once each quarter. Follow
+  `docs/side-chat-support.md` and record the test date and result there.
 
 ## Completion
 

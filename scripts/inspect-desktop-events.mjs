@@ -168,7 +168,9 @@ socket.on("data", (chunk) => {
       message.resultType === "success"
     ) {
       clientId = message.result?.clientId;
-      process.stdout.write("READY — switch to a remote Codex task now.\n");
+      process.stdout.write(
+        "READY — switch tasks or alternate between a main chat and side chat now.\n",
+      );
       if (requestedThreadId && requestedHostId) {
         follow(requestedThreadId, requestedHostId);
       }

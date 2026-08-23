@@ -27,6 +27,13 @@ restart, even when Codex does not replay the current selection.
 A successful change applies to the selected task's next turn. It does not
 change a response that Codex is already generating.
 
+Codex desktop side chats currently inherit their parent task in this plug-in.
+The key shows and changes the parent task settings while a side chat is open.
+Codex desktop does not expose a stable focus event or an independent settings
+target for its ephemeral side-chat editor. See
+[`docs/side-chat-support.md`](docs/side-chat-support.md) for the compatibility
+status and retest procedure.
+
 ## Configure keys
 
 Drag one of these actions from **Codex Controls** to a key:

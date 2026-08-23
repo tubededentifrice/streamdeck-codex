@@ -460,13 +460,28 @@ export class CodexDesktopClient {
                 this.#requestThreadStatus(route);
                 continue;
               }
-              const routeChanged = this.#activeRouteKey !== key;
-              this.#activeRouteKey = key;
+              const selectedRoute = knownState?.sideConversation
+                ? knownState.parentRoute
+                : route;
+              if (!selectedRoute) {
+                this.#pendingRouteKey = undefined;
+                continue;
+              }
+              const selectedKey = this.#routeKey(
+                selectedRoute.hostId,
+                selectedRoute.threadId,
+              );
+              this.#followedRoutes.set(selectedKey, selectedRoute);
+              const routeChanged = this.#activeRouteKey !== selectedKey;
+              this.#activeRouteKey = selectedKey;
               this.#pendingRouteKey = undefined;
-              if (routeChanged) this.#routeChanged(route);
-              if (route.hostId !== "local" && isNewRoute)
-                this.#followRemote(route, true);
-              else this.#requestThreadStatus(route);
+              if (routeChanged) this.#routeChanged(selectedRoute);
+              if (
+                selectedRoute.hostId !== "local" &&
+                (isNewRoute || !this.#remoteStates.has(selectedKey))
+              )
+                this.#followRemote(selectedRoute, true);
+              else this.#requestThreadStatus(selectedRoute);
               if (routeChanged) this.#emitChange();
             } else {
               if (this.#pendingRouteKey === key)
@@ -639,14 +654,47 @@ export class CodexDesktopClient {
         this.#remoteStates.set(key, next);
         let routeChanged = false;
         const pendingRoute = this.#pendingRouteKey === key;
-        const selectedRoute = {
+        const activeSideRoute =
+          next.sideConversation && this.#activeRouteKey === key;
+        let selectedRoute = {
           hostId: params.hostId,
           threadId: params.conversationId,
         };
-        if (pendingRoute && this.#pendingRouteKey === key) {
-          this.#activeRouteKey = key;
+        if (next.sideConversation) {
+          if (!next.parentRoute) {
+            if (pendingRoute) this.#pendingRouteKey = undefined;
+            this.#followedRoutes.delete(key);
+            this.#remoteStates.delete(key);
+            if (activeSideRoute) {
+              const fallback = [...this.#followedRoutes.entries()]
+                .reverse()
+                .find(
+                  ([fallbackKey]) =>
+                    this.#remoteStates.get(fallbackKey)?.sideConversation !==
+                    true,
+                );
+              this.#activeRouteKey = fallback?.[0];
+              this.#routeChanged(fallback?.[1]);
+            }
+            this.#emitChange();
+            return;
+          }
+          selectedRoute = next.parentRoute;
+          this.#followedRoutes.set(
+            this.#routeKey(selectedRoute.hostId, selectedRoute.threadId),
+            selectedRoute,
+          );
+        }
+        if (pendingRoute || activeSideRoute) {
+          this.#activeRouteKey = this.#routeKey(
+            selectedRoute.hostId,
+            selectedRoute.threadId,
+          );
           this.#pendingRouteKey = undefined;
           this.#routeChanged(selectedRoute);
+          if (selectedRoute.hostId !== "local")
+            this.#followRemote(selectedRoute, true);
+          else this.#requestThreadStatus(selectedRoute);
           routeChanged = true;
         }
         if (
@@ -706,8 +754,11 @@ export class CodexDesktopClient {
     if (typeof value !== "string") return undefined;
     try {
       const location = new URL(value, "codex://desktop");
-      const threadId = location.pathname.split("/").filter(Boolean).at(-1);
-      const hostId = location.searchParams.get("hostId");
+      const segments = location.pathname.split("/").filter(Boolean);
+      const threadId = segments.at(-1);
+      const hostId =
+        location.searchParams.get("hostId") ??
+        (segments.at(-2) === "local" ? "local" : undefined);
       return sanitizeCodexRoute({ hostId, threadId });
     } catch {
       return undefined;

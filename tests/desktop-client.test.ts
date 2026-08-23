@@ -215,7 +215,7 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
               latestReasoningEffort: options.effort ?? row?.reasoning_effort,
               sideConversation: options.sideConversation ?? false,
               sideConversationParentNavigationPath: options.parentThreadId
-                ? `/local/${options.parentThreadId}?hostId=local`
+                ? `/local/${options.parentThreadId}`
                 : undefined,
             },
             type: "snapshot",
@@ -493,7 +493,7 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
-  it("restores an unsaved sidecar after its live snapshot", async () => {
+  it("restores the parent of an unsaved side chat", async () => {
     const router = await fakeRouter(-1);
     const client = new CodexDesktopClient(router.home);
     client.restoreRoute({ hostId: "local", threadId: THREAD_C });
@@ -507,9 +507,9 @@ describe("Codex desktop client", () => {
     });
 
     await expect(state).resolves.toMatchObject({
-      effort: "high",
-      model: "gpt-5.6-luna",
-      threadId: THREAD_C,
+      effort: "medium",
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
     });
     client.disconnect();
   });
@@ -630,7 +630,7 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
-  it("uses the selected sidecar instead of its parent task", async () => {
+  it("maps a selected side chat to its parent task", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
     await client.readState();
@@ -643,21 +643,29 @@ describe("Codex desktop client", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     await expect(client.readState()).resolves.toMatchObject({
-      model: "gpt-5.6-terra",
-      threadId: THREAD_B,
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
     });
+
+    await expect(
+      client.update("gpt-5.6-luna", "high", THREAD_A),
+    ).resolves.toMatchObject({
+      model: "gpt-5.6-luna",
+      threadId: THREAD_A,
+    });
+    expect(router.updateCount()).toBe(1);
 
     router.announce(THREAD_B, false);
     router.announce(THREAD_A, true);
     await new Promise((resolve) => setTimeout(resolve, 10));
     await expect(client.readState()).resolves.toMatchObject({
-      model: "gpt-5.6-sol",
+      model: "gpt-5.6-luna",
       threadId: THREAD_A,
     });
     client.disconnect();
   });
 
-  it("keeps the parent active until an unsaved sidecar gets its snapshot", async () => {
+  it("keeps the parent active after an unsaved side chat gets its snapshot", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
     await client.readState();
@@ -677,9 +685,30 @@ describe("Codex desktop client", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     await expect(client.readState()).resolves.toMatchObject({
+      effort: "medium",
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("keeps the main task when a side chat has no valid parent route", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_C, true);
+    router.snapshot(THREAD_C, {
       effort: "high",
       model: "gpt-5.6-luna",
-      threadId: THREAD_C,
+      sideConversation: true,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toMatchObject({
+      effort: "medium",
+      model: "gpt-5.6-sol",
+      threadId: THREAD_A,
     });
     client.disconnect();
   });
