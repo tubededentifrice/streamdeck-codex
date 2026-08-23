@@ -59,7 +59,9 @@ export class CodexDesktopClient {
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
   #database: DatabaseSync | undefined;
+  #pendingRouteKey: string | undefined;
   #selectionSourceClientId: string | undefined;
+  readonly #selectionTransitions = new Map<string, number>();
   #socket: net.Socket | undefined;
 
   constructor(
@@ -74,10 +76,12 @@ export class CodexDesktopClient {
 
   restoreRoute(value: unknown): void {
     const route = sanitizeCodexRoute(value);
-    if (!route || this.#activeRouteKey) return;
+    if (!route || this.#activeRouteKey || this.#pendingRouteKey) return;
     const key = this.#routeKey(route.hostId, route.threadId);
     this.#followedRoutes.set(key, route);
-    this.#activeRouteKey = key;
+    if (route.hostId === "local" && !this.#readLocalState(route.threadId))
+      this.#pendingRouteKey = key;
+    else this.#activeRouteKey = key;
   }
 
   onChange(listener: () => void): () => void {
@@ -246,11 +250,14 @@ export class CodexDesktopClient {
       if (typeof result?.clientId !== "string")
         throw new Error("Codex desktop did not return a client ID.");
       this.#clientId = result.clientId;
-      const restored = this.#activeRouteKey
-        ? this.#followedRoutes.get(this.#activeRouteKey)
+      const restoredKey = this.#activeRouteKey ?? this.#pendingRouteKey;
+      const restored = restoredKey
+        ? this.#followedRoutes.get(restoredKey)
         : undefined;
-      if (restored && restored.hostId !== "local")
-        this.#followRemote(restored, true);
+      if (restored) {
+        if (restored.hostId !== "local") this.#followRemote(restored, true);
+        else if (this.#pendingRouteKey) this.#requestThreadStatus(restored);
+      }
     } catch (error) {
       if (this.#socket === socket)
         this.#close(
@@ -411,32 +418,59 @@ export class CodexDesktopClient {
               ? message.sourceClientId
               : undefined;
           if (sourceClientId === this.#clientId) continue;
-          if (!this.#selectionSourceClientId && sourceClientId)
-            this.#selectionSourceClientId = sourceClientId;
-          const fromSelectionSource =
-            !sourceClientId || sourceClientId === this.#selectionSourceClientId;
-          if (!targeted && fromSelectionSource) {
+          if (!targeted) {
+            if (sourceClientId && !params.following)
+              this.#selectionTransitions.set(sourceClientId, Date.now());
+            const recentTransition = sourceClientId
+              ? Date.now() -
+                  (this.#selectionTransitions.get(sourceClientId) ?? 0) <
+                2000
+              : false;
+            const canSelect =
+              !sourceClientId ||
+              !this.#selectionSourceClientId ||
+              sourceClientId === this.#selectionSourceClientId ||
+              recentTransition;
+            if (params.following && !canSelect) continue;
+            if (
+              !params.following &&
+              sourceClientId &&
+              sourceClientId !== this.#selectionSourceClientId
+            )
+              continue;
             const route = {
               hostId: params.hostId,
               threadId: params.conversationId,
             };
             const key = this.#routeKey(route.hostId, route.threadId);
             if (params.following) {
+              if (sourceClientId) {
+                this.#selectionSourceClientId = sourceClientId;
+                this.#selectionTransitions.delete(sourceClientId);
+              }
               const isNewRoute = !this.#followedRoutes.has(key);
               this.#followedRoutes.set(key, route);
               const knownState = this.#remoteStates.get(key);
-              const selectedRoute = knownState?.parentRoute ?? route;
-              const selectedKey = this.#routeKey(
-                selectedRoute.hostId,
-                selectedRoute.threadId,
-              );
-              this.#followedRoutes.set(selectedKey, selectedRoute);
-              this.#activeRouteKey = selectedKey;
-              this.#routeChanged(selectedRoute);
+              if (
+                route.hostId === "local" &&
+                !knownState &&
+                !this.#readLocalState(route.threadId)
+              ) {
+                this.#pendingRouteKey = key;
+                this.#requestThreadStatus(route);
+                continue;
+              }
+              const routeChanged = this.#activeRouteKey !== key;
+              this.#activeRouteKey = key;
+              this.#pendingRouteKey = undefined;
+              if (routeChanged) this.#routeChanged(route);
               if (route.hostId !== "local" && isNewRoute)
                 this.#followRemote(route, true);
               else this.#requestThreadStatus(route);
+              if (routeChanged) this.#emitChange();
             } else {
+              if (this.#pendingRouteKey === key)
+                this.#pendingRouteKey = undefined;
               if (!this.#followedRoutes.delete(key)) continue;
               this.#remoteStates.delete(key);
               if (route.hostId !== "local") this.#followRemote(route, false);
@@ -453,9 +487,9 @@ export class CodexDesktopClient {
                 if (fallback && fallback[1].hostId !== "local") {
                   this.#followRemote(fallback[1], true);
                 }
+                this.#emitChange();
               }
             }
-            this.#emitChange();
           }
         }
       }
@@ -486,9 +520,10 @@ export class CodexDesktopClient {
   }
 
   #close(error: Error, preserveRoute = true): void {
+    const rememberedKey = this.#activeRouteKey ?? this.#pendingRouteKey;
     const rememberedRoute =
-      preserveRoute && this.#activeRouteKey
-        ? this.#followedRoutes.get(this.#activeRouteKey)
+      preserveRoute && rememberedKey
+        ? this.#followedRoutes.get(rememberedKey)
         : undefined;
     const socket = this.#socket;
     const hadConnection = Boolean(
@@ -497,8 +532,10 @@ export class CodexDesktopClient {
     this.#socket = undefined;
     this.#clientId = undefined;
     this.#selectionSourceClientId = undefined;
+    this.#selectionTransitions.clear();
     this.#buffer = Buffer.alloc(0);
     this.#activeRouteKey = undefined;
+    this.#pendingRouteKey = undefined;
     this.#followedRoutes.clear();
     this.restoreRoute(rememberedRoute);
     this.#remoteStates.clear();
@@ -601,16 +638,16 @@ export class CodexDesktopClient {
         };
         this.#remoteStates.set(key, next);
         let routeChanged = false;
-        if (state.sideConversation === true && this.#activeRouteKey === key) {
-          const parent = parentRoute;
-          if (parent?.hostId === params.hostId) {
-            const parentKey = this.#routeKey(parent.hostId, parent.threadId);
-            this.#followedRoutes.set(parentKey, parent);
-            this.#activeRouteKey = parentKey;
-            this.#routeChanged(parent);
-            this.#requestThreadStatus(parent);
-            routeChanged = true;
-          }
+        const pendingRoute = this.#pendingRouteKey === key;
+        const selectedRoute = {
+          hostId: params.hostId,
+          threadId: params.conversationId,
+        };
+        if (pendingRoute && this.#pendingRouteKey === key) {
+          this.#activeRouteKey = key;
+          this.#pendingRouteKey = undefined;
+          this.#routeChanged(selectedRoute);
+          routeChanged = true;
         }
         if (
           routeChanged ||
