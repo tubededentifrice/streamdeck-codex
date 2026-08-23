@@ -2,6 +2,7 @@ import type { KeyAction } from "@elgato/streamdeck";
 import { describe, expect, it, vi } from "vitest";
 
 import { CodexController } from "../src/codex/controller";
+import { CodexError } from "../src/codex/errors";
 import type { ActionSettings, CodexState } from "../src/domain/settings";
 import { defaultsFor } from "../src/domain/settings";
 
@@ -63,6 +64,45 @@ function fakeStyles() {
 }
 
 describe("Codex controller refresh", () => {
+  it("shows task loading instead of the previous task during navigation", async () => {
+    let listener: () => void = () => undefined;
+    let routeRevision = 1;
+    let resolving = false;
+    const client = {
+      get routeRevision() {
+        return routeRevision;
+      },
+      onChange: (next: () => void) => {
+        listener = next;
+        return () => undefined;
+      },
+      readState: vi.fn(async () => {
+        if (resolving)
+          throw new CodexError(
+            "resolving-task",
+            "Codex is resolving the selected task.",
+          );
+        return LOCAL;
+      }),
+      restoreRoute: () => undefined,
+      update: vi.fn(),
+    };
+    const controller = new CodexController(client, fakeStyles());
+    const { action, images } = fakeAction();
+    controller.start();
+    await controller.show(action, "model", defaultsFor("model"));
+    expect(images.at(-1)).toContain("SOL%205.6");
+
+    resolving = true;
+    routeRevision = 2;
+    listener();
+
+    await vi.waitFor(() => {
+      expect(images.at(-1)).toContain("TASK%20LOADING");
+    });
+    expect(images.at(-1)).not.toContain("SOL%205.6");
+  });
+
   it("renders a new local route before an old read finishes", async () => {
     const oldRead = deferred<CodexState>();
     let listener: () => void = () => undefined;

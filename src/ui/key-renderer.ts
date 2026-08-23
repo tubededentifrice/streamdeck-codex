@@ -97,11 +97,11 @@ export function renderKey(
   );
 }
 
-export function renderLoading(kind: ActionKind): string {
+export function renderLoading(kind: ActionKind, status = "UPDATING…"): string {
   return svg(
     `
 		<text x="72" y="62" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>
-		<text x="72" y="91" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="14">UPDATING…</text>
+		<text x="72" y="91" text-anchor="middle" fill="#b7c0cf" font-family="-apple-system,Arial,sans-serif" font-size="14">${escapeXml(status)}</text>
 	`,
     COLORS[kind],
   );

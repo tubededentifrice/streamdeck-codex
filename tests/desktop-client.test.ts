@@ -14,10 +14,17 @@ type Router = {
     threadId: string,
     following: boolean,
     sourceClientId?: string,
-    targeted?: boolean,
+    targeted?: boolean | "other",
   ) => void;
   close: () => Promise<void>;
+  followerRegistrations: () => Array<{
+    following: boolean;
+    targetClientIds?: string[];
+    threadId?: string;
+  }>;
   home: string;
+  invalidateCache: () => void;
+  patchState: (threadId: string, model: string, effort: string) => void;
   select: (threadId: string) => void;
   setState: (threadId: string, model: string, effort: string) => void;
   snapshot: (
@@ -34,10 +41,10 @@ type Router = {
 
 type RemoteRouter = {
   close: () => Promise<void>;
+  followRequestCount: () => number;
   home: string;
   setStoredState: (model: string, effort: string) => void;
   setState: (model: string, effort: string) => void;
-  statusRequestCount: () => number;
   updateTargets: () => Array<string | undefined>;
 };
 
@@ -69,6 +76,12 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
 
   let selected = THREAD_A;
   let updates = 0;
+  const clientId = crypto.randomUUID();
+  const followerRegistrations: Array<{
+    following: boolean;
+    targetClientIds?: string[];
+    threadId?: string;
+  }> = [];
   let activeSocket: net.Socket | undefined;
   const server = net.createServer((socket) => {
     activeSocket = socket;
@@ -82,9 +95,14 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
           buffer.subarray(4, length + 4).toString("utf8"),
         ) as {
           method: string;
-          params?: { conversationId?: string; threadSettings?: unknown };
+          params?: {
+            conversationId?: string;
+            following?: boolean;
+            threadSettings?: unknown;
+          };
           requestId: string;
           sourceClientId?: string;
+          targetClientIds?: string[];
           type?: string;
         };
         buffer = buffer.subarray(length + 4);
@@ -92,7 +110,7 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
           socket.write(
             frame({
               requestId: request.requestId,
-              result: { clientId: crypto.randomUUID() },
+              result: { clientId },
               resultType: "success",
               type: "response",
             }),
@@ -141,6 +159,11 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
           request.method === "thread-stream-following-changed" &&
           request.type === "broadcast"
         ) {
+          followerRegistrations.push({
+            following: request.params?.following === true,
+            targetClientIds: request.targetClientIds,
+            threadId: request.params?.conversationId,
+          });
           socket.write(frame({ ...request, version: 1 }));
         }
       }
@@ -184,14 +207,19 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
     threadId: string,
     following: boolean,
     sourceClientId = "desktop-ui-client",
-    targeted = false,
+    targeted: boolean | "other" = false,
   ) => {
     activeSocket?.write(
       frame({
         method: "thread-stream-following-changed",
         params: { conversationId: threadId, following, hostId: "local" },
         sourceClientId,
-        targetClientIds: targeted ? ["stream-deck-client"] : undefined,
+        targetClientIds:
+          targeted === true
+            ? [clientId]
+            : targeted === "other"
+              ? ["other-client"]
+              : undefined,
         version: 1,
       }),
     );
@@ -242,14 +270,49 @@ async function fakeRouter(selectionDelayMs = 0): Promise<Router> {
   return {
     announce,
     close,
+    followerRegistrations: () => followerRegistrations,
     home,
+    invalidateCache: () => {
+      activeSocket?.write(
+        frame({
+          method: "query-cache-invalidate",
+          params: { queryKey: ["tasks"] },
+          sourceClientId: "desktop-ui-client",
+          type: "broadcast",
+          version: 0,
+        }),
+      );
+    },
+    patchState: (threadId, model, effort) => {
+      activeSocket?.write(
+        frame({
+          method: "thread-stream-state-changed",
+          params: {
+            change: {
+              patches: [
+                { path: ["latestModel"], value: model },
+                { path: ["latestReasoningEffort"], value: effort },
+              ],
+              type: "patches",
+            },
+            conversationId: threadId,
+            hostId: "local",
+          },
+          sourceClientId: "desktop-ui-client",
+          type: "broadcast",
+          version: 11,
+        }),
+      );
+    },
     select,
     setState: (threadId, model, effort) => {
       database
         .prepare(
-          "UPDATE threads SET model = ?, reasoning_effort = ? WHERE id = ?",
+          `INSERT INTO threads (id, model, reasoning_effort) VALUES (?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET model = excluded.model,
+             reasoning_effort = excluded.reasoning_effort`,
         )
-        .run(model, effort, threadId);
+        .run(threadId, model, effort);
     },
     snapshot,
     updateCount: () => updates,
@@ -270,7 +333,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
   const hostId = "remote-ssh-discovered:dev";
   let model = "gpt-5.6-luna";
   let effort = "high";
-  let statusRequests = 0;
+  let followRequests = 0;
   const targets: Array<string | undefined> = [];
   let activeSocket: net.Socket | undefined;
 
@@ -328,6 +391,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
           requestId?: string;
           sourceClientId?: string;
           targetClientId?: string;
+          targetClientIds?: string[];
           type: string;
         };
         buffer = buffer.subarray(length + 4);
@@ -346,6 +410,10 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
           message.method === "thread-stream-following-changed" &&
           message.type === "broadcast"
         ) {
+          if (message.params?.following === true) {
+            followRequests += 1;
+            sendSnapshot(socket);
+          }
           socket.write(
             frame({
               ...message,
@@ -355,7 +423,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         } else if (
           message.method === "thread-stream-following-status-requested"
         ) {
-          statusRequests += 1;
+          followRequests += 1;
           sendSnapshot(socket);
         } else if (
           message.method === "thread-follower-update-thread-settings" &&
@@ -391,6 +459,7 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
   cleanups.push(close);
   return {
     close,
+    followRequestCount: () => followRequests,
     home,
     setStoredState: (nextModel, nextEffort) => {
       model = nextModel;
@@ -419,7 +488,6 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
         }),
       );
     },
-    statusRequestCount: () => statusRequests,
     updateTargets: () => targets,
   };
 }
@@ -429,6 +497,21 @@ afterEach(async () => {
 });
 
 describe("Codex desktop client", () => {
+  it("targets local follower registration at the selected task owner", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+
+    await client.readState();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(router.followerRegistrations()).toContainEqual({
+      following: true,
+      targetClientIds: ["desktop-ui-client"],
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
   it("reads, updates, and verifies the selected local task", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
@@ -552,6 +635,18 @@ describe("Codex desktop client", () => {
       model: "gpt-5.6-sol",
       threadId: THREAD_A,
     });
+    client.disconnect();
+  });
+
+  it("ignores a targeted startup replay for a different client", async () => {
+    const router = await fakeRouter(-1);
+    const client = new CodexDesktopClient(router.home);
+    await client.connect();
+
+    router.announce(THREAD_A, true, "desktop-ui-client", "other");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(client.routeRevision).toBe(0);
     client.disconnect();
   });
 
@@ -800,7 +895,48 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
-  it("refreshes a local task from the database after a live snapshot", async () => {
+  it("resolves a new local task when its database row appears", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+
+    router.announce(THREAD_C, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
+
+    router.setState(THREAD_C, "gpt-5.6-luna", "high");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    await expect(client.readState()).resolves.toEqual({
+      effort: "high",
+      hostId: "local",
+      model: "gpt-5.6-luna",
+      threadId: THREAD_C,
+    });
+    client.disconnect();
+  });
+
+  it("uses a live local model patch before the database changes", async () => {
+    const router = await fakeRouter();
+    const client = new CodexDesktopClient(router.home);
+    await client.readState();
+    router.snapshot(THREAD_A);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    router.patchState(THREAD_A, "gpt-5.6-luna", "high");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(client.readState()).resolves.toMatchObject({
+      effort: "high",
+      model: "gpt-5.6-luna",
+      threadId: THREAD_A,
+    });
+    client.disconnect();
+  });
+
+  it("uses the local database after a UI cache invalidation", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
     await client.readState();
@@ -808,6 +944,8 @@ describe("Codex desktop client", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     router.setState(THREAD_A, "gpt-5.6-luna", "high");
+    router.invalidateCache();
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     await expect(client.readState()).resolves.toMatchObject({
       effort: "high",
@@ -879,13 +1017,13 @@ describe("Codex desktop client", () => {
     client.onChange(() => {
       changes += 1;
     });
-    const initialRequests = router.statusRequestCount();
+    const initialRequests = router.followRequestCount();
     router.setStoredState("gpt-5.6-sol", "medium");
 
     await client.readState();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(router.statusRequestCount()).toBeGreaterThan(initialRequests);
+    expect(router.followRequestCount()).toBeGreaterThan(initialRequests);
     await expect(client.readState()).resolves.toMatchObject({
       effort: "medium",
       model: "gpt-5.6-sol",

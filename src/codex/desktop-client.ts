@@ -55,12 +55,14 @@ export class CodexDesktopClient {
     string,
     { hostId: string; threadId: string }
   >();
+  readonly #followerTargets = new Map<string, string | undefined>();
   #activeRouteKey: string | undefined;
   #buffer = Buffer.alloc(0);
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
   #database: DatabaseSync | undefined;
   #lastReadyRoute: CodexRoute | undefined;
+  #pendingLocalCheckTimer: ReturnType<typeof setTimeout> | undefined;
   #pendingRouteKey: string | undefined;
   #routeRevision = 0;
   #selectionClearTimer: ReturnType<typeof setTimeout> | undefined;
@@ -122,15 +124,23 @@ export class CodexDesktopClient {
   async readState(): Promise<CodexState> {
     await this.connect();
     const route = await this.#selectedRoute();
+    const live = this.#liveState(route);
+    if (live) {
+      this.#refreshFollower(route);
+      return live;
+    }
     if (route.hostId === "local") {
       const stored = this.#readLocalState(route.threadId);
-      if (stored) return stored;
+      if (stored) {
+        this.#refreshFollower(route);
+        return stored;
+      }
     }
-    const live = await this.#readLiveState(
+    const discovered = await this.#readLiveState(
       route,
       route.hostId === "local" ? 5 : 25,
     );
-    if (live) return live;
+    if (discovered) return discovered;
     if (route.hostId !== "local")
       throw new CodexError(
         "task-state-unavailable",
@@ -155,6 +165,22 @@ export class CodexDesktopClient {
       hostId: "local",
       model: row.model,
       threadId,
+    };
+  }
+
+  #liveState(route: {
+    hostId: string;
+    threadId: string;
+  }): CodexState | undefined {
+    const state = this.#remoteStates.get(
+      this.#routeKey(route.hostId, route.threadId),
+    );
+    if (!state) return undefined;
+    return {
+      effort: state.effort,
+      hostId: state.hostId,
+      model: state.model,
+      threadId: state.threadId,
     };
   }
 
@@ -203,10 +229,20 @@ export class CodexDesktopClient {
       return { ...before, ...updated };
     }
 
-    this.#remoteStates.delete(this.#routeKey(before.hostId, before.threadId));
-    this.#requestThreadStatus(before);
+    this.#refreshFollower(before);
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
+      const stored =
+        before.hostId === "local"
+          ? this.#readLocalState(before.threadId)
+          : undefined;
+      if (stored?.model === model && stored.effort === effort) {
+        const key = this.#routeKey(before.hostId, before.threadId);
+        const live = this.#remoteStates.get(key);
+        if (live) this.#remoteStates.set(key, { ...live, effort, model });
+        this.#emitChange();
+        return stored;
+      }
       const state = await this.readState();
       if (state.threadId !== before.threadId || state.hostId !== before.hostId)
         throw new Error("The selected task changed during the update.");
@@ -274,7 +310,7 @@ export class CodexDesktopClient {
         ? this.#followedRoutes.get(restoredKey)
         : undefined;
       if (restored) {
-        if (restored.hostId !== "local") this.#followRemote(restored, true);
+        if (restored.hostId !== "local") this.#setFollower(restored, true);
         else if (this.#pendingRouteKey) this.#requestThreadStatus(restored);
       }
     } catch (error) {
@@ -321,7 +357,7 @@ export class CodexDesktopClient {
   ): Promise<CodexState | undefined> {
     const key = this.#routeKey(route.hostId, route.threadId);
     let state = this.#remoteStates.get(key);
-    this.#requestThreadStatus(route);
+    this.#refreshFollower(route);
     if (!state) {
       for (let attempt = 0; attempt < attempts && !state; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -379,7 +415,12 @@ export class CodexDesktopClient {
     });
   }
 
-  #broadcast(method: string, version: number, params: unknown): void {
+  #broadcast(
+    method: string,
+    version: number,
+    params: unknown,
+    targetClientIds?: string[],
+  ): void {
     if (!this.#socket || this.#socket.destroyed || !this.#clientId) return;
     this.#socket.write(
       encodeFrame({
@@ -388,6 +429,7 @@ export class CodexDesktopClient {
         method,
         version,
         params,
+        ...(targetClientIds ? { targetClientIds } : {}),
       }),
     );
   }
@@ -444,7 +486,12 @@ export class CodexDesktopClient {
           typeof params.hostId === "string" &&
           typeof params.following === "boolean"
         ) {
-          const targeted = Array.isArray(message.targetClientIds);
+          const targetClientIds = Array.isArray(message.targetClientIds)
+            ? message.targetClientIds.filter(
+                (value): value is string => typeof value === "string",
+              )
+            : undefined;
+          const targeted = targetClientIds !== undefined;
           const sourceClientId =
             typeof message.sourceClientId === "string"
               ? message.sourceClientId
@@ -452,6 +499,9 @@ export class CodexDesktopClient {
           if (sourceClientId === this.#clientId) continue;
           const targetedReplay =
             targeted &&
+            Boolean(
+              this.#clientId && targetClientIds?.includes(this.#clientId),
+            ) &&
             params.following &&
             !this.#selectionSourceClientId &&
             !this.#selectionResolving;
@@ -477,10 +527,11 @@ export class CodexDesktopClient {
             )
               continue;
           }
-          const route = {
+          const route = sanitizeCodexRoute({
             hostId: params.hostId,
             threadId: params.conversationId,
-          };
+          });
+          if (!route) continue;
           const key = this.#routeKey(route.hostId, route.threadId);
           if (params.following) {
             if (sourceClientId) {
@@ -489,6 +540,7 @@ export class CodexDesktopClient {
             }
             const isNewRoute = !this.#followedRoutes.has(key);
             this.#followedRoutes.set(key, route);
+            this.#setFollower(route, true, sourceClientId);
             const knownState = this.#remoteStates.get(key);
             if (
               route.hostId === "local" &&
@@ -507,22 +559,24 @@ export class CodexDesktopClient {
               continue;
             }
             this.#selectRoute(selectedRoute);
+            this.#setFollower(
+              selectedRoute,
+              true,
+              knownState?.relayClientId ?? sourceClientId,
+            );
             const selectedKey = this.#routeKey(
               selectedRoute.hostId,
               selectedRoute.threadId,
             );
-            if (
-              selectedRoute.hostId !== "local" &&
-              (isNewRoute || !this.#remoteStates.has(selectedKey))
-            )
-              this.#followRemote(selectedRoute, true);
+            if (isNewRoute || !this.#remoteStates.has(selectedKey))
+              this.#refreshFollower(selectedRoute);
             else this.#requestThreadStatus(selectedRoute);
           } else {
             const wasSelected =
               this.#activeRouteKey === key || this.#pendingRouteKey === key;
+            this.#setFollower(route, false);
             this.#followedRoutes.delete(key);
             this.#remoteStates.delete(key);
-            if (route.hostId !== "local") this.#followRemote(route, false);
             if (wasSelected) this.#beginNavigation();
           }
         }
@@ -533,6 +587,13 @@ export class CodexDesktopClient {
         message.version === 11
       ) {
         this.#handleRemoteState(message);
+      }
+
+      if (message.method === "query-cache-invalidate") {
+        if (!this.#resolvePendingLocalRoute()) {
+          this.#refreshActiveLocalState();
+          this.#emitChange();
+        }
       }
 
       if (
@@ -554,6 +615,7 @@ export class CodexDesktopClient {
   }
 
   #beginNavigation(): void {
+    this.#clearPendingLocalCheck();
     this.#activeRouteKey = undefined;
     this.#pendingRouteKey = undefined;
     this.#selectionResolving = true;
@@ -565,6 +627,7 @@ export class CodexDesktopClient {
   #beginResolving(key: string): void {
     const previousPending = this.#pendingRouteKey;
     if (previousPending && previousPending !== key) {
+      this.#setFollower(this.#followedRoutes.get(previousPending), false);
       this.#followedRoutes.delete(previousPending);
       this.#remoteStates.delete(previousPending);
     }
@@ -574,6 +637,7 @@ export class CodexDesktopClient {
     this.#routeRevision += 1;
     this.#emitChange();
     this.#scheduleSelectionClear(2500, key);
+    this.#schedulePendingLocalCheck(key);
   }
 
   #scheduleSelectionClear(milliseconds: number, pendingKey?: string): void {
@@ -583,9 +647,11 @@ export class CodexDesktopClient {
       if (!this.#selectionResolving) return;
       if (pendingKey && this.#pendingRouteKey !== pendingKey) return;
       if (pendingKey) {
+        this.#setFollower(this.#followedRoutes.get(pendingKey), false);
         this.#followedRoutes.delete(pendingKey);
         this.#remoteStates.delete(pendingKey);
       }
+      this.#clearPendingLocalCheck();
       this.#pendingRouteKey = undefined;
       this.#selectionResolving = false;
       this.#lastReadyRoute = undefined;
@@ -598,15 +664,22 @@ export class CodexDesktopClient {
 
   #selectRoute(route: CodexRoute): void {
     const key = this.#routeKey(route.hostId, route.threadId);
+    const previousActive = this.#activeRouteKey
+      ? this.#followedRoutes.get(this.#activeRouteKey)
+      : undefined;
     const previousPending = this.#pendingRouteKey;
     const changed =
       this.#activeRouteKey !== key ||
       this.#selectionResolving ||
       previousPending !== undefined;
     if (previousPending && previousPending !== key) {
+      this.#setFollower(this.#followedRoutes.get(previousPending), false);
       this.#followedRoutes.delete(previousPending);
       this.#remoteStates.delete(previousPending);
     }
+    if (previousActive && this.#activeRouteKey !== key)
+      this.#setFollower(previousActive, false);
+    this.#clearPendingLocalCheck();
     if (this.#selectionClearTimer) {
       clearTimeout(this.#selectionClearTimer);
       this.#selectionClearTimer = undefined;
@@ -638,6 +711,7 @@ export class CodexDesktopClient {
     this.#clientId = undefined;
     this.#selectionSourceClientId = undefined;
     this.#selectionTransitions.clear();
+    this.#clearPendingLocalCheck();
     if (this.#selectionClearTimer) {
       clearTimeout(this.#selectionClearTimer);
       this.#selectionClearTimer = undefined;
@@ -647,6 +721,7 @@ export class CodexDesktopClient {
     this.#activeRouteKey = undefined;
     this.#pendingRouteKey = undefined;
     this.#followedRoutes.clear();
+    this.#followerTargets.clear();
     this.#lastReadyRoute = undefined;
     this.restoreRoute(rememberedRoute);
     this.#remoteStates.clear();
@@ -663,16 +738,54 @@ export class CodexDesktopClient {
     for (const listener of this.#listeners) listener();
   }
 
-  #followRemote(
-    route: { hostId: string; threadId: string },
+  #setFollower(
+    route: { hostId: string; threadId: string } | undefined,
     following: boolean,
+    targetClientId?: string,
   ): void {
-    this.#broadcast("thread-stream-following-changed", 1, {
-      conversationId: route.threadId,
-      hostId: route.hostId,
-      following,
-    });
-    if (following) this.#requestThreadStatus(route);
+    if (!route) return;
+    const key = this.#routeKey(route.hostId, route.threadId);
+    if (following) {
+      if (this.#followerTargets.has(key)) {
+        const previousTarget = this.#followerTargets.get(key);
+        if (previousTarget === targetClientId) return;
+        if (previousTarget !== undefined) this.#setFollower(route, false);
+      }
+      this.#followerTargets.set(key, targetClientId);
+    } else {
+      if (!this.#followerTargets.has(key)) return;
+      targetClientId = this.#followerTargets.get(key);
+      this.#followerTargets.delete(key);
+    }
+    this.#broadcast(
+      "thread-stream-following-changed",
+      1,
+      {
+        conversationId: route.threadId,
+        hostId: route.hostId,
+        following,
+      },
+      targetClientId ? [targetClientId] : undefined,
+    );
+  }
+
+  #refreshFollower(route: { hostId: string; threadId: string }): void {
+    const key = this.#routeKey(route.hostId, route.threadId);
+    if (!this.#followerTargets.has(key)) {
+      this.#requestThreadStatus(route);
+      return;
+    }
+    const targetClientId = this.#followerTargets.get(key);
+    this.#broadcast(
+      "thread-stream-following-changed",
+      1,
+      {
+        conversationId: route.threadId,
+        hostId: route.hostId,
+        following: true,
+      },
+      targetClientId ? [targetClientId] : undefined,
+    );
   }
 
   #requestThreadStatus(route: { hostId: string; threadId: string }): void {
@@ -757,6 +870,10 @@ export class CodexDesktopClient {
         };
         if (next.sideConversation) {
           if (!next.parentRoute) {
+            this.#setFollower(
+              { hostId: params.hostId, threadId: params.conversationId },
+              false,
+            );
             this.#followedRoutes.delete(key);
             this.#remoteStates.delete(key);
             if (pendingRoute || activeSideRoute) {
@@ -769,9 +886,8 @@ export class CodexDesktopClient {
         }
         if (pendingRoute || activeSideRoute) {
           this.#selectRoute(selectedRoute);
-          if (selectedRoute.hostId !== "local")
-            this.#followRemote(selectedRoute, true);
-          else this.#requestThreadStatus(selectedRoute);
+          this.#setFollower(selectedRoute, true, message.sourceClientId);
+          this.#refreshFollower(selectedRoute);
           return;
         }
         if (
@@ -825,6 +941,59 @@ export class CodexDesktopClient {
 
   #routeKey(hostId: string, threadId: string): string {
     return `${hostId}\0${threadId}`;
+  }
+
+  #schedulePendingLocalCheck(key: string): void {
+    const route = this.#followedRoutes.get(key);
+    if (route?.hostId !== "local") return;
+    this.#clearPendingLocalCheck();
+    this.#pendingLocalCheckTimer = setTimeout(() => {
+      this.#pendingLocalCheckTimer = undefined;
+      if (this.#pendingRouteKey !== key) return;
+      if (!this.#resolvePendingLocalRoute())
+        this.#schedulePendingLocalCheck(key);
+    }, 100);
+    this.#pendingLocalCheckTimer.unref();
+  }
+
+  #resolvePendingLocalRoute(): boolean {
+    const key = this.#pendingRouteKey;
+    const route = key ? this.#followedRoutes.get(key) : undefined;
+    if (
+      !route ||
+      route.hostId !== "local" ||
+      !this.#readLocalState(route.threadId)
+    )
+      return false;
+    this.#selectRoute(route);
+    this.#refreshFollower(route);
+    return true;
+  }
+
+  #refreshActiveLocalState(): void {
+    const key = this.#activeRouteKey;
+    if (!key) return;
+    const route = this.#followedRoutes.get(key);
+    if (route?.hostId !== "local") return;
+    const stored = this.#readLocalState(route.threadId);
+    const live = this.#remoteStates.get(key);
+    if (
+      !stored ||
+      !live ||
+      (stored.model === live.model && stored.effort === live.effort)
+    )
+      return;
+    this.#remoteStates.set(key, {
+      ...live,
+      effort: stored.effort,
+      model: stored.model,
+    });
+  }
+
+  #clearPendingLocalCheck(): void {
+    if (!this.#pendingLocalCheckTimer) return;
+    clearTimeout(this.#pendingLocalCheckTimer);
+    this.#pendingLocalCheckTimer = undefined;
   }
 
   #parentRoute(value: unknown): CodexRoute | undefined {

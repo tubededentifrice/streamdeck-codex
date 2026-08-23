@@ -178,9 +178,22 @@ export class CodexController {
       state = await this.#client.readState();
     } catch (error) {
       if (
-        version !== this.#refreshVersion ||
-        routeRevision !== this.#client.routeRevision ||
+        version === this.#refreshVersion &&
+        routeRevision === this.#client.routeRevision &&
         isResolvingTaskError(error)
+      ) {
+        await Promise.all(
+          [...this.#visible.values()].map(({ action, kind }) =>
+            this.#busy.get(action.id)?.routeRevision === routeRevision
+              ? Promise.resolve()
+              : this.#setImage(action, renderLoading(kind, "TASK LOADING")),
+          ),
+        );
+        return;
+      }
+      if (
+        version !== this.#refreshVersion ||
+        routeRevision !== this.#client.routeRevision
       )
         return;
       const detail =
