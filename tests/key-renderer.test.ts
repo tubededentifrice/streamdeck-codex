@@ -4,7 +4,7 @@ import { CodexError } from "../src/codex/errors";
 import { renderError, renderKey, renderLoading } from "../src/ui/key-renderer";
 
 describe("key renderer", () => {
-  it("shows the current and next model", () => {
+  it("shows configured labels for the current and next model", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
@@ -16,9 +16,14 @@ describe("key renderer", () => {
         },
         { label: "Luna", model: "gpt-5.6-luna" },
         2,
+        undefined,
+        undefined,
+        undefined,
+        { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toContain("SOL 5.6");
+    expect(image).toContain(">SOL<");
+    expect(image).not.toContain("SOL 5.6");
     expect(image).toContain("NEXT  LUNA");
   });
 
@@ -55,11 +60,93 @@ describe("key renderer", () => {
         undefined,
         undefined,
         { showNext: false, showTitle: false },
+        { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toContain("SOL 5.6");
+    expect(image).toContain(">SOL<");
     expect(image).not.toContain(">MODEL<");
     expect(image).not.toContain("NEXT  LUNA");
+  });
+
+  it("uses only the model label and selected effort for presets", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "preset",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        {
+          effort: "high",
+          label: "Luna",
+          model: "gpt-5.6-luna",
+        },
+        2,
+        undefined,
+        undefined,
+        undefined,
+        {
+          effort: "medium",
+          label: "Sol",
+          model: "gpt-5.6-sol",
+        },
+      ),
+    );
+    expect(image).toContain(">SOL<");
+    expect(image).toContain(">MEDIUM<");
+    expect(image).toContain("NEXT  LUNA / HIGH");
+    expect(image).not.toContain("SOL 5.6");
+  });
+
+  it("uses effort values instead of labels for thinking", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "thinking",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        { effort: "high", label: "Ignored next label" },
+        2,
+        undefined,
+        undefined,
+        undefined,
+        { effort: "medium", label: "Ignored current label" },
+      ),
+    );
+    expect(image).toContain(">MEDIUM<");
+    expect(image).toContain("NEXT  HIGH");
+    expect(image).not.toContain("IGNORED");
+  });
+
+  it("uses separate model and thinking font sizes for presets", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "preset",
+        {
+          effort: "medium",
+          hostId: "local",
+          model: "gpt-5.6-sol",
+          threadId: "thread-123",
+        },
+        undefined,
+        1,
+        undefined,
+        undefined,
+        { modelFontSize: 30, thinkingFontSize: 10 },
+        {
+          effort: "medium",
+          label: "Sol",
+          model: "gpt-5.6-sol",
+        },
+      ),
+    );
+    expect(image).toMatch(/font-size="30"[^>]*>SOL<\/text>/);
+    expect(image).toMatch(/font-size="10"[^>]*>MEDIUM<\/text>/);
   });
 
   it("shows an inactive chat status on three lines", () => {

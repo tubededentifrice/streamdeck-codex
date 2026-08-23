@@ -91,7 +91,7 @@ describe("Codex controller refresh", () => {
     const { action, images } = fakeAction();
     controller.start();
     await controller.show(action, "model", defaultsFor("model"));
-    expect(images.at(-1)).toContain("SOL%205.6");
+    expect(images.at(-1)).toContain("%3ESOL%3C");
 
     resolving = true;
     routeRevision = 2;
@@ -102,7 +102,7 @@ describe("Codex controller refresh", () => {
       expect(images.at(-1)).toContain("ACTIVE");
       expect(images.at(-1)).toContain("CHAT");
     });
-    expect(images.at(-1)).not.toContain("SOL%205.6");
+    expect(images.at(-1)).not.toContain("%3ESOL%3C");
   });
 
   it("renders a new local route before an old read finishes", async () => {
@@ -138,12 +138,12 @@ describe("Codex controller refresh", () => {
     listener();
 
     await vi.waitFor(() => {
-      expect(images.at(-1)).toContain("SOL%205.6");
+      expect(images.at(-1)).toContain("%3ESOL%3C");
     });
     oldRead.reject(new Error("Old remote route timed out."));
     await staleRefresh;
 
-    expect(images.at(-1)).toContain("SOL%205.6");
+    expect(images.at(-1)).toContain("%3ESOL%3C");
     expect(images.join("\n")).not.toContain("CODEX%20OFFLINE");
   });
 
@@ -177,14 +177,14 @@ describe("Codex controller refresh", () => {
     routeRevision = 2;
     listener();
     await vi.waitFor(() => {
-      expect(images.at(-1)).toContain("SOL%205.6");
+      expect(images.at(-1)).toContain("%3ESOL%3C");
     });
     const localImageIndex = images.length - 1;
 
     remoteUpdate.reject(new Error("Remote Codex connection timed out."));
     await press;
 
-    expect(images.slice(localImageIndex).at(-1)).toContain("SOL%205.6");
+    expect(images.slice(localImageIndex).at(-1)).toContain("%3ESOL%3C");
     expect(images.slice(localImageIndex).join("\n")).not.toContain(
       "UPDATE%20FAILED",
     );

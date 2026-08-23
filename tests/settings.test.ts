@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   choicesFor,
   defaultsFor,
+  displayChoice,
   nextChoice,
   targetState,
   type CodexState,
@@ -21,9 +22,41 @@ describe("choice settings", () => {
     expect(choicesFor("thinking", defaultsFor("thinking"))).toHaveLength(2);
     expect(choicesFor("preset", defaultsFor("preset"))).toHaveLength(2);
     expect(defaultsFor("model")).toMatchObject({
+      modelFontSize: 21,
       showNext: true,
       showTitle: true,
     });
+    expect(defaultsFor("preset")).toMatchObject({
+      modelFontSize: 21,
+      thinkingFontSize: 18,
+    });
+    expect(choicesFor("preset", defaultsFor("preset"))[0].label).toBe("Sol");
+  });
+
+  it("finds the configured label for the active value", () => {
+    expect(
+      displayChoice(
+        "model",
+        { models: [{ label: "SOL", model: "gpt-5.6-sol" }] },
+        current,
+      ),
+    ).toEqual({ label: "SOL", model: "gpt-5.6-sol" });
+
+    expect(
+      displayChoice(
+        "preset",
+        {
+          presets: [
+            {
+              effort: "high",
+              label: "SOL",
+              model: "gpt-5.6-sol",
+            },
+          ],
+        },
+        current,
+      ),
+    ).toMatchObject({ label: "SOL", model: "gpt-5.6-sol" });
   });
 
   it("sets the only configured value directly", () => {

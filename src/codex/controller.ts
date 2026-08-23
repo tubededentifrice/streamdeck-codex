@@ -5,7 +5,12 @@ import type {
   ActionSettings,
   CodexState,
 } from "../domain/settings";
-import { choicesFor, nextChoice, targetState } from "../domain/settings";
+import {
+  choicesFor,
+  displayChoice,
+  nextChoice,
+  targetState,
+} from "../domain/settings";
 import { activeStyleFor } from "../domain/styles";
 import { renderError, renderKey, renderLoading } from "../ui/key-renderer";
 import { styleService } from "../ui/style-service";
@@ -232,6 +237,7 @@ export class CodexController {
         if (this.#busy.get(action.id)?.routeRevision === routeRevision) return;
         const count = choicesFor(kind as "preset", settings).length;
         const next = nextChoice(kind as "preset", settings, state);
+        const current = displayChoice(kind, settings, state);
         const style = activeStyleFor(
           kind,
           settings,
@@ -240,7 +246,16 @@ export class CodexController {
         );
         await this.#setImage(
           action,
-          renderKey(kind, state, next, count, style, undefined, settings),
+          renderKey(
+            kind,
+            state,
+            next,
+            count,
+            style,
+            undefined,
+            settings,
+            current,
+          ),
         );
       }),
     );
@@ -290,6 +305,7 @@ export class CodexController {
   ): Promise<void> {
     const count = choicesFor(kind as "preset", settings).length;
     const next = nextChoice(kind as "preset", settings, state);
+    const current = displayChoice(kind, settings, state);
     const style = activeStyleFor(kind, settings, state, this.#styles.settings);
     const normal = renderKey(
       kind,
@@ -299,6 +315,7 @@ export class CodexController {
       style,
       undefined,
       settings,
+      current,
     );
     const bright = renderKey(
       kind,
@@ -308,6 +325,7 @@ export class CodexController {
       style,
       "#ffffff",
       settings,
+      current,
     );
     for (let blink = 0; blink < 3; blink += 1) {
       await this.#setImage(action, bright);

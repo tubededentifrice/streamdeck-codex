@@ -8,8 +8,10 @@ import type {
 import type { KeyStyle } from "../domain/styles";
 
 type DisplayOptions = {
+  modelFontSize?: number;
   showNext?: boolean;
   showTitle?: boolean;
+  thinkingFontSize?: number;
 };
 
 const COLORS: Record<ActionKind, string> = {
@@ -50,10 +52,24 @@ function compactModel(model: string): string {
   return `${match[2].toUpperCase()} ${match[1]}`.slice(0, 18);
 }
 
-function currentLines(kind: ActionKind, state: CodexState): [string, string?] {
-  if (kind === "model") return [compactModel(state.model)];
+function currentLines(
+  kind: ActionKind,
+  state: CodexState,
+  choice: ModelChoice | ThinkingChoice | PresetChoice | undefined,
+): [string, string?] {
+  if (kind === "model")
+    return [
+      choice
+        ? (choice as ModelChoice).label.toUpperCase()
+        : compactModel(state.model),
+    ];
   if (kind === "thinking") return [state.effort.toUpperCase()];
-  return [compactModel(state.model), state.effort.toUpperCase()];
+  return [
+    choice
+      ? (choice as PresetChoice).label.toUpperCase()
+      : compactModel(state.model),
+    state.effort.toUpperCase(),
+  ];
 }
 
 function nextLabel(
@@ -63,9 +79,16 @@ function nextLabel(
   if (!choice) return undefined;
   if (kind === "preset") {
     const preset = choice as PresetChoice;
-    return `${compactModel(preset.model)} / ${preset.effort.toUpperCase()}`;
+    return `${preset.label.toUpperCase()} / ${preset.effort.toUpperCase()}`;
   }
-  return choice.label.toUpperCase();
+  if (kind === "thinking")
+    return (choice as ThinkingChoice).effort.toUpperCase();
+  return (choice as ModelChoice).label.toUpperCase();
+}
+
+function fontSize(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(10, Math.min(30, Math.round(value)));
 }
 
 export function renderKey(
@@ -76,8 +99,9 @@ export function renderKey(
   style?: KeyStyle,
   borderColor?: string,
   display: DisplayOptions = {},
+  current?: ModelChoice | ThinkingChoice | PresetChoice,
 ): string {
-  const [primary, secondary] = currentLines(kind, state);
+  const [primary, secondary] = currentLines(kind, state, current);
   const target = nextLabel(kind, next);
   const header = kind.toUpperCase();
   const showTitle = display.showTitle !== false;
@@ -100,8 +124,13 @@ export function renderKey(
   const secondaryY = showNext ? (showTitle ? 77 : 65) : showTitle ? 89 : 88;
   const accent = style?.borderColor ?? COLORS[kind];
   const font = style?.fontColor ?? "#ffffff";
+  const primaryFontSize =
+    kind === "thinking"
+      ? fontSize(display.thinkingFontSize, 21)
+      : fontSize(display.modelFontSize, 21);
+  const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
   const secondaryMarkup = secondary
-    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-size="18" font-weight="700">${escapeXml(secondary)}</text>`
+    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
   const footer = target
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
@@ -117,7 +146,7 @@ export function renderKey(
   return svg(
     `
 		${headerMarkup}
-		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="21" font-weight="800">${escapeXml(primary)}</text>
+		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
 		${footerMarkup}
 	`,

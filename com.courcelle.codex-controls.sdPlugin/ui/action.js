@@ -18,13 +18,13 @@
     ],
     preset: [
       {
-        label: "Sol · Medium",
+        label: "Sol",
         model: "gpt-5.6-sol",
         effort: "medium",
         styleId: "builtin:ocean",
       },
       {
-        label: "Luna · High",
+        label: "Luna",
         model: "gpt-5.6-luna",
         effort: "high",
         styleId: "builtin:violet",
@@ -188,13 +188,30 @@
     document.querySelector("#show-title").checked =
       settings.showTitle !== false;
     document.querySelector("#show-next").checked = settings.showNext !== false;
+    const modelFontRow = document.querySelector("#model-font-row");
+    const thinkingFontRow = document.querySelector("#thinking-font-row");
+    modelFontRow.hidden = kind === "thinking";
+    thinkingFontRow.hidden = kind === "model";
+    document.querySelector("#model-font-size").value = validFontSize(
+      settings.modelFontSize,
+      21,
+    );
+    document.querySelector("#thinking-font-size").value = validFontSize(
+      settings.thinkingFontSize,
+      kind === "preset" ? 18 : 21,
+    );
   }
 
-  function createKeyPreview() {
+  function validFontSize(value, fallback) {
+    return Number.isFinite(value)
+      ? Math.max(10, Math.min(30, Math.round(value)))
+      : fallback;
+  }
+
+  function createKeyPreview(value, style) {
     const preview = document.createElement("div");
     preview.className = "key-preview";
-    preview.setAttribute("role", "img");
-    preview.setAttribute("aria-label", "Static key preview");
+    preview.setAttribute("aria-hidden", "true");
 
     const title = document.createElement("span");
     title.className = "preview-title";
@@ -202,11 +219,29 @@
 
     const current = document.createElement("span");
     current.className = "preview-current";
-    current.textContent = kind === "thinking" ? "MEDIUM" : "SOL 5.6";
+    current.textContent =
+      kind === "thinking"
+        ? (value.effort || "medium").toUpperCase()
+        : (value.label || "MODEL").toUpperCase();
+    current.style.fontSize = `${Math.max(
+      7,
+      Math.round(
+        validFontSize(
+          kind === "thinking"
+            ? settings.thinkingFontSize
+            : settings.modelFontSize,
+          21,
+        ) * 0.45,
+      ),
+    )}px`;
 
     const secondary = document.createElement("span");
     secondary.className = "preview-secondary";
-    secondary.textContent = "MEDIUM";
+    secondary.textContent = (value.effort || "medium").toUpperCase();
+    secondary.style.fontSize = `${Math.max(
+      7,
+      Math.round(validFontSize(settings.thinkingFontSize, 18) * 0.45),
+    )}px`;
     secondary.hidden = kind !== "preset";
 
     const divider = document.createElement("span");
@@ -214,12 +249,27 @@
 
     const next = document.createElement("span");
     next.className = "preview-next";
-    next.textContent = kind === "thinking" ? "NEXT HIGH" : "NEXT LUNA";
+    next.textContent = kind === "thinking" ? "NEXT HIGH" : "NEXT MODEL";
 
     const dot = document.createElement("span");
     dot.className = "preview-dot";
     preview.append(title, current, secondary, divider, next, dot);
-    return { current, divider, dot, next, preview, secondary, title };
+
+    const backgroundColor = style?.backgroundColor || "#303030";
+    const borderColor = style?.borderColor || "#a3a3a3";
+    preview.style.background = backgroundColor;
+    preview.style.borderColor = borderColor;
+    preview.style.color = style?.fontColor || "#f5f5f5";
+    divider.style.background = borderColor;
+    dot.style.background = borderColor;
+    title.hidden = settings.showTitle === false;
+    divider.hidden = settings.showNext === false;
+    next.hidden = settings.showNext === false;
+    dot.hidden = settings.showNext === false;
+    preview.classList.toggle("without-next", settings.showNext === false);
+    current.classList.toggle("without-title", settings.showTitle === false);
+    secondary.classList.toggle("without-title", settings.showTitle === false);
+    return preview;
   }
 
   function styleRow(container, value, index) {
@@ -227,7 +277,6 @@
     row.className = "style-field";
     const labelElement = document.createElement("label");
     labelElement.textContent = "Colors";
-    const select = document.createElement("select");
     const styles = allStyles();
     if (!value.styleId) {
       value.styleId =
@@ -236,63 +285,63 @@
       save();
     }
 
-    for (const [groupLabel, groupStyles] of [
-      ["Built in", styleCatalog.builtInStyles],
-      ["Custom", styleCatalog.customStyles],
-    ]) {
-      if (groupStyles.length === 0) continue;
-      const group = document.createElement("optgroup");
-      group.label = groupLabel;
-      for (const style of groupStyles) {
-        const option = document.createElement("option");
-        option.value = style.id;
-        option.textContent = style.name;
-        option.selected = style.id === value.styleId;
-        group.append(option);
+    const selectedStyle = styles.find((style) => style.id === value.styleId);
+    const picker = document.createElement("details");
+    picker.className = "style-picker";
+    const summary = document.createElement("summary");
+    const selectedName = document.createElement("span");
+    selectedName.className = "selected-style-name";
+    selectedName.textContent = selectedStyle?.name || "Unavailable preset";
+    summary.append(selectedName, createKeyPreview(value, selectedStyle));
+    picker.append(summary);
+
+    const panel = document.createElement("div");
+    panel.className = "style-picker-panel";
+    const populatePicker = () => {
+      if (panel.childElementCount > 0) return;
+      for (const [groupLabel, groupStyles] of [
+        ["Built in", styleCatalog.builtInStyles],
+        ["Custom", styleCatalog.customStyles],
+      ]) {
+        if (groupStyles.length === 0) continue;
+        const heading = document.createElement("div");
+        heading.className = "style-group-title";
+        heading.textContent = groupLabel;
+        const options = document.createElement("div");
+        options.className = "style-options";
+        for (const style of groupStyles) {
+          const option = document.createElement("button");
+          option.type = "button";
+          option.className = "style-option";
+          option.classList.toggle("selected", style.id === value.styleId);
+          option.setAttribute(
+            "aria-pressed",
+            style.id === value.styleId ? "true" : "false",
+          );
+          const name = document.createElement("span");
+          name.textContent = style.name;
+          option.append(createKeyPreview(value, style), name);
+          option.addEventListener("click", () => {
+            value.styleId = style.id;
+            picker.open = false;
+            render();
+            save();
+          });
+          options.append(option);
+        }
+        panel.append(heading, options);
       }
-      select.append(group);
-    }
-    if (!styles.some((style) => style.id === value.styleId)) {
-      const option = document.createElement("option");
-      option.value = value.styleId;
-      option.textContent = "Unavailable preset";
-      option.selected = true;
-      select.prepend(option);
-    }
-    const keyPreview = createKeyPreview();
-    const updatePreview = () => {
-      const style = allStyles().find((item) => item.id === select.value);
-      const backgroundColor = style?.backgroundColor || "#303030";
-      const borderColor = style?.borderColor || "#a3a3a3";
-      keyPreview.preview.style.background = backgroundColor;
-      keyPreview.preview.style.borderColor = borderColor;
-      keyPreview.preview.style.color = style?.fontColor || "#f5f5f5";
-      keyPreview.divider.style.background = borderColor;
-      keyPreview.dot.style.background = borderColor;
-      keyPreview.title.hidden = settings.showTitle === false;
-      keyPreview.divider.hidden = settings.showNext === false;
-      keyPreview.next.hidden = settings.showNext === false;
-      keyPreview.dot.hidden = settings.showNext === false;
-      keyPreview.preview.classList.toggle(
-        "without-next",
-        settings.showNext === false,
-      );
-      keyPreview.current.classList.toggle(
-        "without-title",
-        settings.showTitle === false,
-      );
-      keyPreview.secondary.classList.toggle(
-        "without-title",
-        settings.showTitle === false,
-      );
+      if (styles.length === 0) {
+        const loading = document.createElement("p");
+        loading.textContent = "Loading colors…";
+        panel.append(loading);
+      }
     };
-    select.addEventListener("change", () => {
-      value.styleId = select.value;
-      updatePreview();
-      save();
+    picker.addEventListener("toggle", () => {
+      if (picker.open) populatePicker();
     });
-    updatePreview();
-    row.append(labelElement, select, keyPreview.preview);
+    picker.append(panel);
+    row.append(labelElement, picker);
     container.append(row);
   }
 
@@ -302,13 +351,14 @@
     values().forEach((value, index) => {
       const choice = document.createElement("section");
       choice.className = "choice";
-      inputRow(
-        choice,
-        "Label",
-        "label",
-        value,
-        kind === "preset" ? "Sol · Medium" : "Short key label",
-      );
+      if (kind !== "thinking")
+        inputRow(
+          choice,
+          kind === "preset" ? "Model label" : "Label",
+          "label",
+          value,
+          kind === "preset" ? "Sol" : "Short key label",
+        );
       if (kind !== "thinking")
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
       if (kind !== "model") thinkingRow(choice, value);
@@ -372,6 +422,21 @@
   ]) {
     document.querySelector(selector).addEventListener("change", (event) => {
       settings[setting] = event.currentTarget.checked;
+      render();
+      save();
+    });
+  }
+
+  for (const [selector, setting] of [
+    ["#model-font-size", "modelFontSize"],
+    ["#thinking-font-size", "thinkingFontSize"],
+  ]) {
+    document.querySelector(selector).addEventListener("change", (event) => {
+      const fallback =
+        setting === "modelFontSize" || kind !== "preset" ? 21 : 18;
+      const value = validFontSize(event.currentTarget.valueAsNumber, fallback);
+      event.currentTarget.value = value;
+      settings[setting] = value;
       render();
       save();
     });

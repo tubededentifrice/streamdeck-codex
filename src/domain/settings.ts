@@ -16,10 +16,12 @@ export type PresetChoice = {
 };
 
 export type ActionSettings = JsonObject & {
+  modelFontSize?: number;
   models?: ModelChoice[];
   presets?: PresetChoice[];
   showNext?: boolean;
   showTitle?: boolean;
+  thinkingFontSize?: number;
   thinking?: ThinkingChoice[];
 };
 
@@ -43,13 +45,13 @@ const DEFAULT_THINKING: ThinkingChoice[] = [
 const DEFAULT_PRESETS: PresetChoice[] = [
   {
     effort: "medium",
-    label: "Sol · Medium",
+    label: "Sol",
     model: "gpt-5.6-sol",
     styleId: "builtin:ocean",
   },
   {
     effort: "high",
-    label: "Luna · High",
+    label: "Luna",
     model: "gpt-5.6-luna",
     styleId: "builtin:violet",
   },
@@ -86,10 +88,23 @@ function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
 export function defaultsFor(kind: ActionKind): ActionSettings {
   const display = { showNext: true, showTitle: true };
   if (kind === "model")
-    return { ...display, models: structuredClone(DEFAULT_MODELS) };
+    return {
+      ...display,
+      modelFontSize: 21,
+      models: structuredClone(DEFAULT_MODELS),
+    };
   if (kind === "thinking")
-    return { ...display, thinking: structuredClone(DEFAULT_THINKING) };
-  return { ...display, presets: structuredClone(DEFAULT_PRESETS) };
+    return {
+      ...display,
+      thinking: structuredClone(DEFAULT_THINKING),
+      thinkingFontSize: 21,
+    };
+  return {
+    ...display,
+    modelFontSize: 21,
+    presets: structuredClone(DEFAULT_PRESETS),
+    thinkingFontSize: 18,
+  };
 }
 
 export function choicesFor(
@@ -189,6 +204,25 @@ export function nextChoice(
 
   if (choices.length === 1 || index < 0) return choices[0];
   return choices[(index + 1) % choices.length];
+}
+
+export function displayChoice(
+  kind: ActionKind,
+  settings: ActionSettings,
+  state: CodexState,
+): ModelChoice | ThinkingChoice | PresetChoice | undefined {
+  const choices = choicesFor(kind as "preset", settings);
+  const exact = choices.find((choice) => {
+    if (kind === "model") return (choice as ModelChoice).model === state.model;
+    if (kind === "thinking")
+      return (choice as ThinkingChoice).effort === state.effort;
+    const preset = choice as PresetChoice;
+    return preset.model === state.model && preset.effort === state.effort;
+  });
+  if (exact || kind !== "preset") return exact;
+  return choices.find(
+    (choice) => (choice as PresetChoice).model === state.model,
+  );
 }
 
 export function targetState(
