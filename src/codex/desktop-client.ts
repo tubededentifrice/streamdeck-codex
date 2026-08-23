@@ -8,10 +8,6 @@ import { DatabaseSync } from "node:sqlite";
 import type { CodexState } from "../domain/settings";
 import { sanitizeCodexRoute, type CodexRoute } from "../domain/route";
 import { CodexError } from "./errors";
-import {
-  updateRemoteTaskThroughSsh,
-  validateRemoteTaskThroughSsh,
-} from "./remote-app-server";
 
 const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const STATE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -23,16 +19,6 @@ type PendingRequest = {
   resolve: (value: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 };
-
-type RemoteUpdater = (
-  current: Pick<CodexState, "effort" | "hostId" | "model" | "threadId">,
-  target: Pick<CodexState, "effort" | "model">,
-) => Promise<Pick<CodexState, "effort" | "model">>;
-
-type RemoteValidator = (
-  current: Pick<CodexState, "hostId">,
-  target: Pick<CodexState, "effort" | "model">,
-) => Promise<void>;
 
 function encodeFrame(value: unknown): Buffer {
   const payload = Buffer.from(JSON.stringify(value), "utf8");
@@ -47,17 +33,19 @@ function isStateValue(value: unknown): value is string {
 
 export class CodexDesktopClient {
   readonly #codexHome: string;
-  readonly #remoteUpdater: RemoteUpdater;
-  readonly #remoteValidator: RemoteValidator;
   readonly #routeChanged: (route: CodexRoute | undefined) => void;
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #remoteStates = new Map<
     string,
     CodexState & {
+      latestModel?: string;
+      latestReasoningEffort?: string;
       parentRoute?: CodexRoute;
       relayClientId: string;
       sideConversation: boolean;
+      threadSettingsEffort?: string;
+      threadSettingsModel?: string;
     }
   >();
   readonly #followedRoutes = new Map<
@@ -82,14 +70,10 @@ export class CodexDesktopClient {
 
   constructor(
     codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
-    remoteUpdater: RemoteUpdater = updateRemoteTaskThroughSsh,
     routeChanged: (route: CodexRoute | undefined) => void = () => undefined,
-    remoteValidator: RemoteValidator = validateRemoteTaskThroughSsh,
   ) {
     this.#codexHome = codexHome;
-    this.#remoteUpdater = remoteUpdater;
     this.#routeChanged = routeChanged;
-    this.#remoteValidator = remoteValidator;
   }
 
   get routeRevision(): number {
@@ -224,43 +208,9 @@ export class CodexDesktopClient {
       if (result?.ok !== true)
         throw new Error("Codex desktop did not confirm the settings update.");
     } else {
-      const target = { effort, model };
-      await this.#remoteValidator(before, target);
-      const route = await this.#selectedRoute();
-      if (route.threadId !== before.threadId || route.hostId !== before.hostId)
-        throw new Error("The selected task changed during the update.");
-
-      if (await this.#updateRemoteThroughOwner(before, target)) {
-        const verified = await this.#waitForRemoteState(before, target);
-        if (!verified)
-          throw new Error(
-            "Codex desktop did not confirm the remote settings update.",
-          );
-        this.#emitChange();
-        return verified;
-      }
-
-      const updated = await this.#remoteUpdater(before, target);
-      const fallbackRoute = await this.#selectedRoute();
-      if (
-        fallbackRoute.threadId !== before.threadId ||
-        fallbackRoute.hostId !== before.hostId
-      )
-        throw new Error("The selected task changed during the update.");
-      const key = this.#routeKey(before.hostId, before.threadId);
-      const liveState = this.#remoteStates.get(key);
-      if (!liveState)
-        throw new Error(
-          "Codex desktop did not provide the remote task owner after the update.",
-        );
-      this.#remoteStates.set(key, {
-        ...before,
-        ...updated,
-        relayClientId: liveState.relayClientId,
-        sideConversation: false,
-      });
-      this.#emitChange();
-      return { ...before, ...updated };
+      throw new Error(
+        "Remote task updates are not supported in this Codex release.",
+      );
     }
 
     this.#refreshFollower(before);
@@ -391,7 +341,8 @@ export class CodexDesktopClient {
   ): Promise<CodexState | undefined> {
     const key = this.#routeKey(route.hostId, route.threadId);
     let state = this.#remoteStates.get(key);
-    this.#refreshFollower(route);
+    if (route.hostId === "local") this.#refreshFollower(route);
+    else this.#requestThreadStatus(route);
     if (!state) {
       for (let attempt = 0; attempt < attempts && !state; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -444,7 +395,12 @@ export class CodexDesktopClient {
         this.#pending.delete(requestId);
         reject(new Error(`Codex desktop request ${method} timed out.`));
       }, timeoutMs + 1000);
-      this.#pending.set(requestId, { method, reject, resolve, timer });
+      this.#pending.set(requestId, {
+        method,
+        reject,
+        resolve,
+        timer,
+      });
       this.#socket?.write(encodeFrame(message));
     });
   }
@@ -602,9 +558,13 @@ export class CodexDesktopClient {
               selectedRoute.hostId,
               selectedRoute.threadId,
             );
-            if (isNewRoute || !this.#remoteStates.has(selectedKey))
-              this.#refreshFollower(selectedRoute);
-            else this.#requestThreadStatus(selectedRoute);
+            if (
+              selectedRoute.hostId !== "local" ||
+              !isNewRoute ||
+              this.#remoteStates.has(selectedKey)
+            )
+              this.#requestThreadStatus(selectedRoute);
+            else this.#refreshFollower(selectedRoute);
           } else {
             const wasSelected =
               this.#activeRouteKey === key || this.#pendingRouteKey === key;
@@ -829,76 +789,6 @@ export class CodexDesktopClient {
     });
   }
 
-  async #updateRemoteThroughOwner(
-    route: Pick<CodexState, "hostId" | "threadId">,
-    target: Pick<CodexState, "effort" | "model">,
-  ): Promise<boolean> {
-    const key = this.#routeKey(route.hostId, route.threadId);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const owner = this.#remoteStates.get(key)?.relayClientId;
-      if (!owner) return false;
-      this.#setFollower(route, true, owner);
-      try {
-        const result = (await this.#request(
-          "thread-follower-update-thread-settings",
-          {
-            conversationId: route.threadId,
-            threadSettings: target,
-          },
-          1,
-          5000,
-          owner,
-        )) as { ok?: unknown } | undefined;
-        if (result?.ok !== true)
-          throw new Error(
-            "Codex desktop did not confirm the remote settings update.",
-          );
-        return true;
-      } catch {
-        if (attempt > 0) return false;
-        this.#requestThreadStatus(route);
-        this.#refreshFollower(route);
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        const selected = await this.#selectedRoute();
-        if (
-          selected.threadId !== route.threadId ||
-          selected.hostId !== route.hostId
-        )
-          throw new Error("The selected task changed during the update.");
-        const refreshedOwner = this.#remoteStates.get(key)?.relayClientId;
-        if (refreshedOwner && refreshedOwner !== owner)
-          this.#setFollower(route, true, refreshedOwner);
-      }
-    }
-    return false;
-  }
-
-  async #waitForRemoteState(
-    route: Pick<CodexState, "hostId" | "threadId">,
-    target: Pick<CodexState, "effort" | "model">,
-  ): Promise<CodexState | undefined> {
-    const key = this.#routeKey(route.hostId, route.threadId);
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const selected = await this.#selectedRoute();
-      if (
-        selected.threadId !== route.threadId ||
-        selected.hostId !== route.hostId
-      )
-        throw new Error("The selected task changed during the update.");
-      const state = this.#remoteStates.get(key);
-      if (state?.model === target.model && state.effort === target.effort)
-        return {
-          effort: state.effort,
-          hostId: state.hostId,
-          model: state.model,
-          threadId: state.threadId,
-        };
-      this.#refreshFollower(route);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    return undefined;
-  }
-
   #handleRemoteState(message: Record<string, unknown>): void {
     const params = message.params as
       | { change?: unknown; conversationId?: unknown; hostId?: unknown }
@@ -941,14 +831,22 @@ export class CodexDesktopClient {
               reasoningEffort?: unknown;
             })
           : undefined;
-      const model = isStateValue(state.latestModel)
+      const latestModel = isStateValue(state.latestModel)
         ? state.latestModel
-        : settings?.model;
-      const effort = isStateValue(state.latestReasoningEffort)
+        : undefined;
+      const latestReasoningEffort = isStateValue(state.latestReasoningEffort)
         ? state.latestReasoningEffort
-        : isStateValue(settings?.effort)
-          ? settings.effort
-          : settings?.reasoningEffort;
+        : undefined;
+      const threadSettingsModel = isStateValue(settings?.model)
+        ? settings.model
+        : undefined;
+      const threadSettingsEffort = isStateValue(settings?.effort)
+        ? settings.effort
+        : isStateValue(settings?.reasoningEffort)
+          ? settings.reasoningEffort
+          : undefined;
+      const model = threadSettingsModel ?? latestModel;
+      const effort = threadSettingsEffort ?? latestReasoningEffort;
       if (isStateValue(model) && isStateValue(effort)) {
         const parentRoute =
           state.sideConversation === true
@@ -958,10 +856,14 @@ export class CodexDesktopClient {
         const next = {
           effort,
           hostId: params.hostId,
+          latestModel,
+          latestReasoningEffort,
           model,
           parentRoute,
           relayClientId: message.sourceClientId,
           sideConversation: state.sideConversation === true,
+          threadSettingsEffort,
+          threadSettingsModel,
           threadId: params.conversationId,
         };
         this.#remoteStates.set(key, next);
@@ -994,6 +896,8 @@ export class CodexDesktopClient {
           this.#refreshFollower(selectedRoute);
           return;
         }
+        if (this.#activeRouteKey === key)
+          this.#setFollower(selectedRoute, true, message.sourceClientId);
         if (
           this.#activeRouteKey === key &&
           (!previous ||
@@ -1012,8 +916,10 @@ export class CodexDesktopClient {
     if (change.type !== "patches" || !Array.isArray(change.patches)) return;
     const current = this.#remoteStates.get(key);
     if (!current || current.relayClientId !== message.sourceClientId) return;
-    let model = current.model;
-    let effort = current.effort;
+    let latestModel = current.latestModel;
+    let latestReasoningEffort = current.latestReasoningEffort;
+    let threadSettingsModel = current.threadSettingsModel;
+    let threadSettingsEffort = current.threadSettingsEffort;
     for (const patch of change.patches) {
       if (!patch || typeof patch !== "object") continue;
       const { path: patchPath, value } = patch as {
@@ -1021,25 +927,62 @@ export class CodexDesktopClient {
         value?: unknown;
       };
       if (!Array.isArray(patchPath) || patchPath.length === 0) continue;
-      if (patchPath[0] === "latestModel" && isStateValue(value)) model = value;
-      if (patchPath[0] === "latestReasoningEffort" && isStateValue(value))
-        effort = value;
+      if (patchPath[0] === "latestModel")
+        latestModel = isStateValue(value) ? value : undefined;
+      if (patchPath[0] === "latestReasoningEffort")
+        latestReasoningEffort = isStateValue(value) ? value : undefined;
+      if (patchPath[0] === "latestThreadSettings" && patchPath.length === 1) {
+        const settings =
+          value && typeof value === "object"
+            ? (value as {
+                effort?: unknown;
+                model?: unknown;
+                reasoningEffort?: unknown;
+              })
+            : undefined;
+        threadSettingsModel = isStateValue(settings?.model)
+          ? settings.model
+          : undefined;
+        threadSettingsEffort = isStateValue(settings?.effort)
+          ? settings.effort
+          : isStateValue(settings?.reasoningEffort)
+            ? settings.reasoningEffort
+            : undefined;
+      }
       if (
         patchPath[0] === "latestThreadSettings" &&
         patchPath[1] === "model" &&
-        isStateValue(value)
+        patchPath.length > 1
       )
-        model = value;
+        threadSettingsModel = isStateValue(value) ? value : undefined;
       if (
         patchPath[0] === "latestThreadSettings" &&
         ["effort", "reasoningEffort"].includes(String(patchPath[1])) &&
-        isStateValue(value)
+        patchPath.length > 1
       )
-        effort = value;
+        threadSettingsEffort = isStateValue(value) ? value : undefined;
     }
-    if (model !== current.model || effort !== current.effort) {
-      this.#remoteStates.set(key, { ...current, effort, model });
-      if (this.#activeRouteKey === key) this.#emitChange();
+    const model = threadSettingsModel ?? latestModel ?? current.model;
+    const effort =
+      threadSettingsEffort ?? latestReasoningEffort ?? current.effort;
+    const displayChanged = model !== current.model || effort !== current.effort;
+    if (
+      displayChanged ||
+      latestModel !== current.latestModel ||
+      latestReasoningEffort !== current.latestReasoningEffort ||
+      threadSettingsModel !== current.threadSettingsModel ||
+      threadSettingsEffort !== current.threadSettingsEffort
+    ) {
+      this.#remoteStates.set(key, {
+        ...current,
+        effort,
+        latestModel,
+        latestReasoningEffort,
+        model,
+        threadSettingsEffort,
+        threadSettingsModel,
+      });
+      if (displayChanged && this.#activeRouteKey === key) this.#emitChange();
     }
   }
 

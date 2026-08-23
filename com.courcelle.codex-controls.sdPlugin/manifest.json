@@ -40,7 +40,7 @@
   "Category": "Codex Controls",
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
-  "Description": "Control the selected Codex task model and thinking level.",
+  "Description": "Change local Codex task settings and show local or remote task values from Stream Deck.",
   "Icon": "imgs/plugin/marketplace",
   "SDKVersion": 3,
   "Software": { "MinimumVersion": "7.1" },

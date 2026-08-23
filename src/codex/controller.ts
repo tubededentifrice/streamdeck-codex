@@ -52,7 +52,7 @@ export class CodexController {
     this.#styles = styles;
     this.#client =
       client ??
-      new CodexDesktopClient(undefined, undefined, (route) => {
+      new CodexDesktopClient(undefined, (route) => {
         void styles.saveLastRoute(route).catch(() => {
           streamDeck.logger.error(
             "Codex selected-task route could not be saved.",

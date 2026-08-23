@@ -1,7 +1,8 @@
 # Codex Controls for Stream Deck
 
 Codex Controls is a macOS Stream Deck plug-in for the Codex desktop app. It
-changes the model or thinking level for the selected Codex task.
+changes the model or thinking level for the selected local Codex task. It shows
+the next-turn values for the selected remote task.
 
 Each key accepts one or more configured values:
 
@@ -13,22 +14,23 @@ a mismatch visible before you press the key.
 
 ## Current scope
 
-The plug-in controls local and remote tasks through the Codex desktop app. It
-detects the selected task route automatically. For a remote task, it gets the
-SSH alias from Codex and connects to the remote Codex App Server. It does not
-require host settings. Codex interfaces used for task control can change between
-releases. Treat this integration as a compatibility layer, not as a stable public
-Codex API.
+The plug-in controls local tasks through the Codex desktop app. It detects local
+and remote task routes and shows their next-turn values. Remote setting changes
+are disabled because this Codex release does not provide a reliable remote
+composer update route. The plug-in does not require host settings. Codex
+interfaces used for task control can change between releases. Treat this
+integration as a compatibility layer, not as a stable public Codex API.
 
 The plug-in saves the last validated selected-task route in Stream Deck global
 settings. This lets it restore the key display after a plug-in or Codex IPC
 restart, even when Codex does not replay the current selection.
 
-A successful change applies to the selected task's next turn. It does not
-change a response that Codex is already generating.
+A successful local change applies to the selected task's next turn. It does
+not change a response that Codex is already generating.
 
 Codex desktop side chats currently inherit their parent task in this plug-in.
-The key shows and changes the parent task settings while a side chat is open.
+The key shows the parent task settings while a side chat is open. It changes
+these settings for a local parent task.
 Codex desktop does not expose a stable focus event or an independent settings
 target for its ephemeral side-chat editor. See
 [`docs/side-chat-support.md`](docs/side-chat-support.md) for the compatibility
@@ -74,13 +76,8 @@ set.
 - Elgato Stream Deck 7.1 or later
 - Node.js 24
 
-Remote setting changes use the SSH host alias that Codex reports for the
-selected task. The plug-in opens `codex app-server proxy` through the existing
-SSH configuration. SSH must work without an interactive password prompt, such
-as with an SSH key and agent. The plug-in validates the requested model and
-thinking level. It verifies the saved task settings through Codex desktop IPC.
-It does not use
-Accessibility, Screen Recording, OCR, or UI clicks.
+Remote task detection and display use Codex desktop IPC. The plug-in does not
+use Accessibility, Screen Recording, OCR, or UI clicks.
 
 ## Development setup
 
