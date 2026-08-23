@@ -1,4 +1,5 @@
 {
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "Codex Controls",
   "Version": "0.1.0.0",
   "Author": "Vincent Courcelle",
@@ -42,9 +43,11 @@
   "CodePath": "bin/plugin.js",
   "Description": "Change local Codex task settings and show local or remote task values from Stream Deck.",
   "Icon": "imgs/plugin/marketplace",
+  "URL": "https://github.com/tubededentifrice/codex-streamdeck",
+  "SupportURL": "https://github.com/tubededentifrice/codex-streamdeck/issues",
   "SDKVersion": 3,
   "Software": { "MinimumVersion": "7.1" },
   "OS": [{ "Platform": "mac", "MinimumVersion": "12" }],
-  "Nodejs": { "Version": "24", "Debug": "enabled" },
+  "Nodejs": { "Version": "24" },
   "UUID": "com.courcelle.codex-controls"
 }

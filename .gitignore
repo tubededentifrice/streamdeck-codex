@@ -3,6 +3,7 @@ node_modules/
 *.sdPlugin/bin/
 *.sdPlugin/logs/
 *.streamDeckPlugin
+dist/
 
 # Local development files
 .DS_Store
