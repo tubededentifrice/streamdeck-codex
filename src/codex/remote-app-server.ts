@@ -20,6 +20,14 @@ type PendingRequest = {
 
 type SpawnSsh = typeof spawn;
 
+type SshFailure =
+  | "authentication"
+  | "codex-command-missing"
+  | "connection-refused"
+  | "connection-timeout"
+  | "host-key"
+  | "hostname";
+
 export type RemoteAppServerClient = {
   close: () => void;
   update: (
@@ -31,6 +39,49 @@ export type RemoteAppServerClient = {
 type ConnectRemote = (sshAlias: string) => Promise<RemoteAppServerClient>;
 
 class RemoteRequestRejectedError extends Error {}
+
+function sshFailureFromStderr(value: string): SshFailure | undefined {
+  const text = value.toLowerCase();
+  if (text.includes("permission denied")) return "authentication";
+  if (text.includes("host key verification failed")) return "host-key";
+  if (text.includes("could not resolve hostname")) return "hostname";
+  if (text.includes("connection refused")) return "connection-refused";
+  if (
+    text.includes("connection timed out") ||
+    text.includes("operation timed out")
+  )
+    return "connection-timeout";
+  if (
+    text.includes("codex: command not found") ||
+    text.includes("codex: not found")
+  )
+    return "codex-command-missing";
+  return undefined;
+}
+
+function safeFailureDetail(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown-failure";
+  const message = error.message;
+  const known = [
+    "Remote Codex connection timed out.",
+    "The remote Codex App Server connection closed.",
+    "The remote Codex App Server closed the connection.",
+    "The remote Codex App Server handshake is too large.",
+    "The remote Codex App Server returned an invalid handshake.",
+    "The remote Codex App Server returned malformed data.",
+  ];
+  if (known.includes(message)) return message;
+  if (
+    message.startsWith("Remote Codex connection timed out (") ||
+    message.startsWith("Remote Codex request ") ||
+    message.startsWith("Remote Codex rejected ") ||
+    message.startsWith("The remote Codex App Server process exited ") ||
+    message.startsWith("The remote Codex App Server rejected WebSocket ") ||
+    message.startsWith("The SSH process could not start ")
+  )
+    return message;
+  return "remote-transport-failure";
+}
 
 function timeout<T>(
   promise: Promise<T>,
@@ -114,6 +165,10 @@ export class SshAppServerClient implements RemoteAppServerClient {
   #handshakeResolve: (() => void) | undefined;
   #nextId = 1;
   #ready = false;
+  #spawned = false;
+  #stderrSeen = false;
+  #sshFailure: SshFailure | undefined;
+  #stdoutSeen = false;
 
   constructor(host: string, spawnSsh: SpawnSsh = spawn) {
     if (!SSH_ALIAS.test(host))
@@ -128,12 +183,35 @@ export class SshAppServerClient implements RemoteAppServerClient {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.#child = child;
-    child.stdout.on("data", (chunk: Buffer) => this.#onData(chunk));
-    child.stderr.on("data", () => undefined);
-    child.once("error", (error) => this.#fail(error));
-    child.once("exit", () =>
-      this.#fail(new Error("The remote Codex App Server connection closed.")),
+    child.once("spawn", () => {
+      this.#spawned = true;
+    });
+    child.stdout.on("data", (chunk: Buffer) => {
+      this.#stdoutSeen = true;
+      this.#onData(chunk);
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      this.#stderrSeen = true;
+      this.#sshFailure ??= sshFailureFromStderr(chunk);
+    });
+    child.once("error", (error: NodeJS.ErrnoException) =>
+      this.#fail(
+        new Error(
+          `The SSH process could not start (${error.code ?? "unknown"}).`,
+        ),
+      ),
     );
+    child.once("exit", (code, signal) => {
+      const result = this.#sshFailure
+        ? `ssh-${this.#sshFailure}`
+        : signal
+          ? `signal-${signal}`
+          : `code-${code ?? "unknown"}`;
+      this.#fail(
+        new Error(`The remote Codex App Server process exited (${result}).`),
+      );
+    });
 
     const key = crypto.randomBytes(16).toString("base64");
     const expectedAccept = crypto
@@ -170,6 +248,14 @@ export class SshAppServerClient implements RemoteAppServerClient {
       this.#notify("initialized", {});
     } catch (error) {
       this.close();
+      if (
+        error instanceof Error &&
+        error.message === "Remote Codex connection timed out."
+      )
+        throw new Error(
+          `Remote Codex connection timed out (spawned=${this.#spawned ? 1 : 0}, stdout=${this.#stdoutSeen ? 1 : 0}, stderr=${this.#stderrSeen ? 1 : 0}, ssh=${this.#sshFailure ?? "none"}).`,
+          { cause: error },
+        );
       throw error;
     }
   }
@@ -300,9 +386,10 @@ export class SshAppServerClient implements RemoteAppServerClient {
       const header = this.#buffer.subarray(0, end + 4).toString("utf8");
       this.#buffer = this.#buffer.subarray(end + 4);
       if (!header.startsWith("HTTP/1.1 101")) {
+        const status = /^HTTP\/1\.1 (\d{3})/.exec(header)?.[1] ?? "unknown";
         this.#handshakeReject?.(
           new Error(
-            "The remote Codex App Server rejected the WebSocket connection.",
+            `The remote Codex App Server rejected WebSocket setup (HTTP ${status}).`,
           ),
         );
         return;
@@ -384,7 +471,7 @@ export class SshAppServerClient implements RemoteAppServerClient {
       const text = this.#fragment.toString("utf8");
       this.#fragment = Buffer.alloc(0);
       let message: {
-        error?: { message?: unknown };
+        error?: { code?: unknown; message?: unknown };
         id?: unknown;
         result?: unknown;
       };
@@ -405,7 +492,12 @@ export class SshAppServerClient implements RemoteAppServerClient {
       if (message.error)
         pending.reject(
           new RemoteRequestRejectedError(
-            `Remote Codex rejected ${pending.method}.`,
+            `Remote Codex rejected ${pending.method} (code ${
+              typeof message.error.code === "number" ||
+              typeof message.error.code === "string"
+                ? String(message.error.code).slice(0, 24)
+                : "unknown"
+            }).`,
           ),
         );
       else pending.resolve(message.result);
@@ -466,7 +558,7 @@ export class RemoteTaskUpdater {
       }
     }
     throw new Error(
-      "Codex could not update the selected remote task through SSH.",
+      `Codex could not update the selected remote task through SSH. Last failure: ${safeFailureDetail(lastError)}`,
       {
         cause: lastError,
       },

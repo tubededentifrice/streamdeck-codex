@@ -110,7 +110,7 @@ describe("remote Codex App Server", () => {
     const updater = new RemoteTaskUpdater(connect);
 
     await expect(updater.update(CURRENT, TARGET)).rejects.toThrow(
-      "Codex could not update the selected remote task through SSH.",
+      "Codex could not update the selected remote task through SSH. Last failure: remote-transport-failure",
     );
     expect(connect).toHaveBeenCalledTimes(2);
   });

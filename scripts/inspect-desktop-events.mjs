@@ -107,36 +107,6 @@ const socket = net.createConnection({ path: socketPath });
 let buffer = Buffer.alloc(0);
 let clientId;
 const initializeId = crypto.randomUUID();
-const requestedThreadId = process.argv[2];
-const requestedHostId = process.argv[3];
-let activeThreadId = requestedThreadId;
-let activeHostId = requestedHostId;
-
-function follow(threadId, hostId) {
-  activeThreadId = threadId;
-  activeHostId = hostId;
-  broadcast("thread-stream-following-changed", 1, {
-    conversationId: threadId,
-    hostId,
-    following: true,
-  });
-  broadcast("thread-stream-following-status-requested", 1, {
-    conversationId: threadId,
-    hostId,
-  });
-}
-
-function broadcast(method, version, params) {
-  socket.write(
-    frame({
-      type: "broadcast",
-      sourceClientId: clientId,
-      method,
-      version,
-      params,
-    }),
-  );
-}
 
 socket.on("connect", () => {
   socket.write(
@@ -169,29 +139,10 @@ socket.on("data", (chunk) => {
     ) {
       clientId = message.result?.clientId;
       process.stdout.write(
-        "READY — switch tasks or alternate between a main chat and side chat now.\n",
+        "READY — switch tasks or alternate between a main chat and side chat now. This inspector is read-only.\n",
       );
-      if (requestedThreadId && requestedHostId) {
-        follow(requestedThreadId, requestedHostId);
-      }
     } else {
       process.stdout.write(`${JSON.stringify(safeSummary(message))}\n`);
-    }
-
-    if (
-      message.method === "thread-stream-following-changed" &&
-      message.sourceClientId !== clientId &&
-      message.params?.following === true &&
-      typeof message.params?.conversationId === "string" &&
-      typeof message.params?.hostId === "string" &&
-      message.params.hostId !== "local" &&
-      (!requestedThreadId ||
-        (message.params.conversationId === requestedThreadId &&
-          message.params.hostId === requestedHostId)) &&
-      (message.params.conversationId !== activeThreadId ||
-        message.params.hostId !== activeHostId)
-    ) {
-      follow(message.params.conversationId, message.params.hostId);
     }
 
     if (message.type === "client-discovery-request" && message.requestId) {

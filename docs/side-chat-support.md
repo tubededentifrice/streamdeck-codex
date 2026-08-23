@@ -41,7 +41,8 @@ Retest after a Codex desktop release changes task or chat navigation, and at
 least once each quarter.
 
 1. Build and restart the linked plug-in.
-2. Run `node scripts/inspect-desktop-events.mjs`.
+2. Run `node scripts/inspect-desktop-events.mjs`. This inspector is read-only. It
+   logs IPC events but never changes the selected task or following route.
 3. Open a saved local main task with model A.
 4. Open a side chat with model B.
 5. Alternate focus between the two editors without sending a message.
