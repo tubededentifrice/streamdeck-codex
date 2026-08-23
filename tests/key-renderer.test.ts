@@ -66,7 +66,7 @@ describe("key renderer", () => {
     expect(image).toContain(">SOL<");
     expect(image).not.toContain(">MODEL<");
     expect(image).not.toContain("NEXT  LUNA");
-    expect(image).toMatch(/y="72"[^>]*dominant-baseline="central"/);
+    expect(image).toMatch(/y="79\.56"[^>]*font-size="21"/);
   });
 
   it("uses only the model label and selected effort for presets", () => {
@@ -146,12 +146,8 @@ describe("key renderer", () => {
         },
       ),
     );
-    expect(image).toMatch(
-      /y="60"[^>]*dominant-baseline="central"[^>]*font-size="48"[^>]*>SOL<\/text>/,
-    );
-    expect(image).toMatch(
-      /y="82\.3"[^>]*dominant-baseline="central"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/,
-    );
+    expect(image).toMatch(/y="77\.28"[^>]*font-size="48"[^>]*>SOL<\/text>/);
+    expect(image).toMatch(/y="85\.9"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/);
 
     const reversed = decodeURIComponent(
       renderKey(
@@ -174,8 +170,10 @@ describe("key renderer", () => {
         },
       ),
     );
-    expect(reversed).toMatch(/y="46\.7"[^>]*font-size="10"[^>]*>SOL<\/text>/);
-    expect(reversed).toMatch(/y="69"[^>]*font-size="48"[^>]*>MEDIUM<\/text>/);
+    expect(reversed).toMatch(/y="50\.3"[^>]*font-size="10"[^>]*>SOL<\/text>/);
+    expect(reversed).toMatch(
+      /y="86\.28"[^>]*font-size="48"[^>]*>MEDIUM<\/text>/,
+    );
   });
 
   it("limits unexpected font sizes to the supported range", () => {
@@ -196,9 +194,7 @@ describe("key renderer", () => {
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toMatch(
-      /y="64\.5"[^>]*dominant-baseline="central"[^>]*font-size="48"/,
-    );
+    expect(image).toMatch(/y="81\.78"[^>]*font-size="48"/);
   });
 
   it("shows an inactive chat status on three lines", () => {

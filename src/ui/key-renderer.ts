@@ -116,6 +116,10 @@ function valuePositions(
   ];
 }
 
+function alphabeticBaseline(center: number, size: number): number {
+  return Number((center + size * 0.36).toFixed(2));
+}
+
 export function renderKey(
   kind: ActionKind,
   state: CodexState,
@@ -138,14 +142,19 @@ export function renderKey(
       ? fontSize(display.thinkingFontSize, 21)
       : fontSize(display.modelFontSize, 21);
   const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
-  const [primaryY, secondaryY] = valuePositions(
+  const [primaryCenter, secondaryCenter] = valuePositions(
     showTitle,
     showNext,
     primaryFontSize,
     secondary ? secondaryFontSize : undefined,
   );
+  const primaryY = alphabeticBaseline(primaryCenter, primaryFontSize);
+  const secondaryY =
+    secondaryCenter === undefined
+      ? undefined
+      : alphabeticBaseline(secondaryCenter, secondaryFontSize);
   const secondaryMarkup = secondary
-    ? `<text x="72" y="${secondaryY}" dominant-baseline="central" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
+    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
   const footer = target
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
@@ -161,7 +170,7 @@ export function renderKey(
   return svg(
     `
 		${headerMarkup}
-		<text x="72" y="${primaryY}" dominant-baseline="central" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
+		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
 		${footerMarkup}
 	`,
