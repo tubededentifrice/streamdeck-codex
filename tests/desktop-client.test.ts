@@ -7,7 +7,10 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CodexDesktopClient } from "../src/codex/desktop-client";
+import {
+  CodexDesktopClient,
+  IpcFrameDecoder,
+} from "../src/codex/desktop-client";
 
 type Router = {
   announce: (
@@ -43,7 +46,7 @@ type RemoteRouter = {
   close: () => Promise<void>;
   followRequestCount: () => number;
   home: string;
-  setStoredState: (model: string, effort: string) => void;
+  patchState: (model: string, effort: string) => void;
   updateRequestCount: () => number;
 };
 
@@ -467,9 +470,34 @@ async function fakeRemoteRouter(): Promise<RemoteRouter> {
     close,
     followRequestCount: () => followRequests,
     home,
-    setStoredState: (nextModel, nextEffort) => {
+    patchState: (nextModel, nextEffort) => {
       model = nextModel;
       effort = nextEffort;
+      activeSocket?.write(
+        frame({
+          method: "thread-stream-state-changed",
+          params: {
+            change: {
+              patches: [
+                {
+                  path: ["latestThreadSettings", "model"],
+                  value: model,
+                },
+                {
+                  path: ["latestThreadSettings", "effort"],
+                  value: effort,
+                },
+              ],
+              type: "patches",
+            },
+            conversationId: THREAD_A,
+            hostId,
+          },
+          sourceClientId: relayClientId,
+          type: "broadcast",
+          version: 11,
+        }),
+      );
     },
     updateRequestCount: () => updateRequests,
   };
@@ -479,19 +507,40 @@ afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
+describe("Codex IPC frame decoder", () => {
+  it("assembles a fragmented frame without repeated full-buffer copies", () => {
+    const decoder = new IpcFrameDecoder(8);
+    const encoded = frame({ x: 1 });
+    const decoded = [...encoded].flatMap((_, index) =>
+      decoder.push(encoded.subarray(index, index + 1)),
+    );
+
+    expect(decoded.map((payload) => payload.toString("utf8"))).toEqual([
+      '{"x":1}',
+    ]);
+  });
+
+  it("discards an oversized frame and reads the next frame", () => {
+    const decoder = new IpcFrameDecoder(8);
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(9);
+    const decoded = decoder.push(
+      Buffer.concat([header, Buffer.alloc(9), frame({})]),
+    );
+
+    expect(decoded.map((payload) => payload.toString("utf8"))).toEqual(["{}"]);
+  });
+});
+
 describe("Codex desktop client", () => {
-  it("targets local follower registration at the selected task owner", async () => {
+  it("does not follow a saved local task", async () => {
     const router = await fakeRouter();
     const client = new CodexDesktopClient(router.home);
 
     await client.readState();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(router.followerRegistrations()).toContainEqual({
-      following: true,
-      targetClientIds: ["desktop-ui-client"],
-      threadId: THREAD_A,
-    });
+    expect(router.followerRegistrations()).toEqual([]);
     client.disconnect();
   });
 
@@ -718,12 +767,14 @@ describe("Codex desktop client", () => {
     client.onChange(() => {
       changes += 1;
     });
+    const registrations = router.followerRegistrations().length;
 
     router.announce(THREAD_A, true);
     router.announce(THREAD_A, true);
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(changes).toBe(0);
+    expect(router.followerRegistrations()).toHaveLength(registrations);
     client.disconnect();
   });
 
@@ -861,6 +912,15 @@ describe("Codex desktop client", () => {
     await client.readState();
 
     router.announce(THREAD_C, true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const registrations = router.followerRegistrations().length;
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
+    await expect(client.readState()).rejects.toMatchObject({
+      code: "resolving-task",
+    });
+    expect(router.followerRegistrations()).toHaveLength(registrations);
     router.snapshot(THREAD_C, {
       effort: "high",
       model: "gpt-5.6-luna",
@@ -967,7 +1027,7 @@ describe("Codex desktop client", () => {
     client.disconnect();
   });
 
-  it("requests a fresh remote snapshot during a periodic read", async () => {
+  it("uses remote patches without requesting periodic snapshots", async () => {
     const router = await fakeRemoteRouter();
     const client = new CodexDesktopClient(router.home);
     await client.readState();
@@ -976,12 +1036,14 @@ describe("Codex desktop client", () => {
       changes += 1;
     });
     const initialRequests = router.followRequestCount();
-    router.setStoredState("gpt-5.6-sol", "medium");
 
     await client.readState();
+    await client.readState();
+    expect(router.followRequestCount()).toBe(initialRequests);
+
+    router.patchState("gpt-5.6-sol", "medium");
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(router.followRequestCount()).toBeGreaterThan(initialRequests);
     await expect(client.readState()).resolves.toMatchObject({
       effort: "medium",
       model: "gpt-5.6-sol",

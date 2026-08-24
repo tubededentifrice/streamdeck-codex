@@ -13,6 +13,83 @@ const THREAD_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const STATE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_FRAME_SIZE = 16 * 1024 * 1024;
 
+export class IpcFrameDecoder {
+  readonly #header = Buffer.allocUnsafe(4);
+  readonly #maxFrameSize: number;
+  #discardRemaining = 0;
+  #frame: Buffer | undefined;
+  #frameBytes = 0;
+  #headerBytes = 0;
+
+  constructor(maxFrameSize: number) {
+    this.#maxFrameSize = maxFrameSize;
+  }
+
+  push(chunk: Buffer): Buffer[] {
+    const frames: Buffer[] = [];
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (this.#discardRemaining > 0) {
+        const discarded = Math.min(
+          this.#discardRemaining,
+          chunk.length - offset,
+        );
+        this.#discardRemaining -= discarded;
+        offset += discarded;
+        continue;
+      }
+
+      if (!this.#frame) {
+        const headerBytes = Math.min(
+          4 - this.#headerBytes,
+          chunk.length - offset,
+        );
+        chunk.copy(
+          this.#header,
+          this.#headerBytes,
+          offset,
+          offset + headerBytes,
+        );
+        this.#headerBytes += headerBytes;
+        offset += headerBytes;
+        if (this.#headerBytes < 4) continue;
+
+        const length = this.#header.readUInt32LE(0);
+        this.#headerBytes = 0;
+        if (!length)
+          throw new Error("Codex desktop returned an invalid frame.");
+        if (length > this.#maxFrameSize) {
+          this.#discardRemaining = length;
+          continue;
+        }
+        this.#frame = Buffer.allocUnsafe(length);
+        this.#frameBytes = 0;
+      }
+
+      const frameBytes = Math.min(
+        this.#frame.length - this.#frameBytes,
+        chunk.length - offset,
+      );
+      chunk.copy(this.#frame, this.#frameBytes, offset, offset + frameBytes);
+      this.#frameBytes += frameBytes;
+      offset += frameBytes;
+      if (this.#frameBytes !== this.#frame.length) continue;
+
+      frames.push(this.#frame);
+      this.#frame = undefined;
+      this.#frameBytes = 0;
+    }
+    return frames;
+  }
+
+  reset(): void {
+    this.#discardRemaining = 0;
+    this.#frame = undefined;
+    this.#frameBytes = 0;
+    this.#headerBytes = 0;
+  }
+}
+
 type PendingRequest = {
   method: string;
   reject: (error: Error) => void;
@@ -33,6 +110,7 @@ function isStateValue(value: unknown): value is string {
 
 export class CodexDesktopClient {
   readonly #codexHome: string;
+  readonly #decoder = new IpcFrameDecoder(MAX_FRAME_SIZE);
   readonly #routeChanged: (route: CodexRoute | undefined) => void;
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingRequest>();
@@ -53,8 +131,8 @@ export class CodexDesktopClient {
     { hostId: string; threadId: string }
   >();
   readonly #followerTargets = new Map<string, string | undefined>();
+  readonly #snapshotRoutes = new Set<string>();
   #activeRouteKey: string | undefined;
-  #buffer = Buffer.alloc(0);
   #clientId: string | undefined;
   #connectPromise: Promise<void> | undefined;
   #database: DatabaseSync | undefined;
@@ -120,16 +198,10 @@ export class CodexDesktopClient {
     await this.connect();
     const route = await this.#selectedRoute();
     const live = this.#liveState(route);
-    if (live) {
-      this.#refreshFollower(route);
-      return live;
-    }
+    if (live) return live;
     if (route.hostId === "local") {
       const stored = this.#readLocalState(route.threadId);
-      if (stored) {
-        this.#refreshFollower(route);
-        return stored;
-      }
+      if (stored) return stored;
     }
     const discovered = await this.#readLiveState(
       route,
@@ -213,8 +285,6 @@ export class CodexDesktopClient {
       );
     }
 
-    this.#refreshFollower(before);
-
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const stored =
         before.hostId === "local"
@@ -294,8 +364,8 @@ export class CodexDesktopClient {
         ? this.#followedRoutes.get(restoredKey)
         : undefined;
       if (restored) {
-        if (restored.hostId !== "local") this.#setFollower(restored, true);
-        else if (this.#pendingRouteKey) this.#requestThreadStatus(restored);
+        if (restored.hostId !== "local") this.#requestThreadStatus(restored);
+        else if (this.#pendingRouteKey) this.#setFollower(restored, true);
       }
     } catch (error) {
       if (this.#socket === socket)
@@ -341,8 +411,7 @@ export class CodexDesktopClient {
   ): Promise<CodexState | undefined> {
     const key = this.#routeKey(route.hostId, route.threadId);
     let state = this.#remoteStates.get(key);
-    if (route.hostId === "local") this.#refreshFollower(route);
-    else this.#requestThreadStatus(route);
+    if (!state) this.#requestThreadStatus(route);
     if (!state) {
       for (let attempt = 0; attempt < attempts && !state; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -410,8 +479,9 @@ export class CodexDesktopClient {
     version: number,
     params: unknown,
     targetClientIds?: string[],
-  ): void {
-    if (!this.#socket || this.#socket.destroyed || !this.#clientId) return;
+  ): boolean {
+    if (!this.#socket || this.#socket.destroyed || !this.#clientId)
+      return false;
     this.#socket.write(
       encodeFrame({
         type: "broadcast",
@@ -422,19 +492,22 @@ export class CodexDesktopClient {
         ...(targetClientIds ? { targetClientIds } : {}),
       }),
     );
+    return true;
   }
 
   #onData(chunk: Buffer): void {
-    this.#buffer = Buffer.concat([this.#buffer, chunk]);
-    while (this.#buffer.length >= 4) {
-      const length = this.#buffer.readUInt32LE(0);
-      if (!length || length > MAX_FRAME_SIZE) {
-        this.#close(new Error("Codex desktop returned an invalid frame."));
-        return;
-      }
-      if (this.#buffer.length < length + 4) return;
-      const payload = this.#buffer.subarray(4, length + 4);
-      this.#buffer = this.#buffer.subarray(length + 4);
+    let payloads: Buffer[];
+    try {
+      payloads = this.#decoder.push(chunk);
+    } catch (error) {
+      this.#close(
+        error instanceof Error
+          ? error
+          : new Error("Codex desktop returned invalid data."),
+      );
+      return;
+    }
+    for (const payload of payloads) {
       let message: Record<string, unknown>;
       try {
         message = JSON.parse(payload.toString("utf8")) as Record<
@@ -528,17 +601,15 @@ export class CodexDesktopClient {
               this.#selectionSourceClientId = sourceClientId;
               this.#selectionTransitions.delete(sourceClientId);
             }
-            const isNewRoute = !this.#followedRoutes.has(key);
             this.#followedRoutes.set(key, route);
-            this.#setFollower(route, true, sourceClientId);
             const knownState = this.#remoteStates.get(key);
             if (
               route.hostId === "local" &&
               !knownState &&
               !this.#readLocalState(route.threadId)
             ) {
+              this.#setFollower(route, true, sourceClientId);
               this.#beginResolving(key);
-              this.#requestThreadStatus(route);
               continue;
             }
             const selectedRoute = knownState?.sideConversation
@@ -549,22 +620,15 @@ export class CodexDesktopClient {
               continue;
             }
             this.#selectRoute(selectedRoute);
-            this.#setFollower(
-              selectedRoute,
-              true,
-              knownState?.relayClientId ?? sourceClientId,
-            );
-            const selectedKey = this.#routeKey(
-              selectedRoute.hostId,
-              selectedRoute.threadId,
-            );
-            if (
-              selectedRoute.hostId !== "local" ||
-              !isNewRoute ||
-              this.#remoteStates.has(selectedKey)
-            )
-              this.#requestThreadStatus(selectedRoute);
-            else this.#refreshFollower(selectedRoute);
+            if (selectedRoute.hostId !== "local") {
+              if (knownState)
+                this.#setFollower(
+                  selectedRoute,
+                  true,
+                  knownState.relayClientId,
+                );
+              else this.#requestThreadStatus(selectedRoute);
+            }
           } else {
             const wasSelected =
               this.#activeRouteKey === key || this.#pendingRouteKey === key;
@@ -711,11 +775,12 @@ export class CodexDesktopClient {
       this.#selectionClearTimer = undefined;
     }
     this.#selectionResolving = false;
-    this.#buffer = Buffer.alloc(0);
+    this.#decoder.reset();
     this.#activeRouteKey = undefined;
     this.#pendingRouteKey = undefined;
     this.#followedRoutes.clear();
     this.#followerTargets.clear();
+    this.#snapshotRoutes.clear();
     this.#lastReadyRoute = undefined;
     this.restoreRoute(rememberedRoute);
     this.#remoteStates.clear();
@@ -743,10 +808,25 @@ export class CodexDesktopClient {
       if (this.#followerTargets.has(key)) {
         const previousTarget = this.#followerTargets.get(key);
         if (previousTarget === targetClientId) return;
-        if (previousTarget !== undefined) this.#setFollower(route, false);
+        this.#setFollower(route, false);
       }
-      this.#followerTargets.set(key, targetClientId);
+      const sent = this.#broadcast(
+        "thread-stream-following-changed",
+        1,
+        {
+          conversationId: route.threadId,
+          hostId: route.hostId,
+          following,
+        },
+        targetClientId ? [targetClientId] : undefined,
+      );
+      if (sent) {
+        this.#followerTargets.set(key, targetClientId);
+        this.#snapshotRoutes.add(key);
+      }
+      return;
     } else {
+      this.#snapshotRoutes.delete(key);
       if (!this.#followerTargets.has(key)) return;
       targetClientId = this.#followerTargets.get(key);
       this.#followerTargets.delete(key);
@@ -763,30 +843,18 @@ export class CodexDesktopClient {
     );
   }
 
-  #refreshFollower(route: { hostId: string; threadId: string }): void {
+  #requestThreadStatus(route: { hostId: string; threadId: string }): void {
     const key = this.#routeKey(route.hostId, route.threadId);
-    if (!this.#followerTargets.has(key)) {
-      this.#requestThreadStatus(route);
-      return;
-    }
-    const targetClientId = this.#followerTargets.get(key);
-    this.#broadcast(
-      "thread-stream-following-changed",
+    if (this.#snapshotRoutes.has(key)) return;
+    const sent = this.#broadcast(
+      "thread-stream-following-status-requested",
       1,
       {
         conversationId: route.threadId,
         hostId: route.hostId,
-        following: true,
       },
-      targetClientId ? [targetClientId] : undefined,
     );
-  }
-
-  #requestThreadStatus(route: { hostId: string; threadId: string }): void {
-    this.#broadcast("thread-stream-following-status-requested", 1, {
-      conversationId: route.threadId,
-      hostId: route.hostId,
-    });
+    if (sent) this.#snapshotRoutes.add(key);
   }
 
   #handleRemoteState(message: Record<string, unknown>): void {
@@ -889,11 +957,17 @@ export class CodexDesktopClient {
             return;
           }
           selectedRoute = next.parentRoute;
+          this.#setFollower(
+            { hostId: params.hostId, threadId: params.conversationId },
+            false,
+          );
+          this.#followedRoutes.delete(key);
+          this.#remoteStates.delete(key);
         }
         if (pendingRoute || activeSideRoute) {
           this.#selectRoute(selectedRoute);
-          this.#setFollower(selectedRoute, true, message.sourceClientId);
-          this.#refreshFollower(selectedRoute);
+          if (selectedRoute.hostId !== "local")
+            this.#setFollower(selectedRoute, true, message.sourceClientId);
           return;
         }
         if (this.#activeRouteKey === key)
@@ -1007,13 +1081,15 @@ export class CodexDesktopClient {
     const key = this.#pendingRouteKey;
     const route = key ? this.#followedRoutes.get(key) : undefined;
     if (
+      !key ||
       !route ||
       route.hostId !== "local" ||
       !this.#readLocalState(route.threadId)
     )
       return false;
+    this.#setFollower(route, false);
+    this.#remoteStates.delete(key);
     this.#selectRoute(route);
-    this.#refreshFollower(route);
     return true;
   }
 
