@@ -9,8 +9,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve, sep } from "node:path";
+import process from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   choicesFor,
@@ -18,7 +19,7 @@ import {
   displayChoice,
   nextChoice,
 } from "../src/domain/settings.ts";
-import { activeStyleFor } from "../src/domain/styles.ts";
+import { activeStyleFor, BUILT_IN_STYLES } from "../src/domain/styles.ts";
 import { renderKey } from "../src/ui/key-renderer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,11 +31,23 @@ const pluginImages = join(
 );
 const sourceDirectory = join(root, "marketplace", "source");
 const imageDirectory = join(root, "marketplace", "images");
+const propertyInspectorDirectory = join(
+  root,
+  "com.courcelle.codex-controls.sdPlugin",
+  "ui",
+);
 const fontCandidates = [
   "/System/Library/Fonts/HelveticaNeue.ttc",
   "/System/Library/Fonts/SFNS.ttf",
 ];
 const font = fontCandidates.find(existsSync);
+const browserCandidates = [
+  process.env.CODEX_CONTROLS_BROWSER,
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+].filter(Boolean);
 
 mkdirSync(sourceDirectory, { recursive: true });
 mkdirSync(imageDirectory, { recursive: true });
@@ -96,6 +109,147 @@ function imageData(path) {
   return `data:image/png;base64,${readFileSync(path).toString("base64")}`;
 }
 
+function browserPath() {
+  const browser = browserCandidates.find(existsSync);
+  if (browser) return browser;
+  throw new Error(
+    "Install Chrome, Chromium, or Edge, or set CODEX_CONTROLS_BROWSER to a browser executable.",
+  );
+}
+
+function propertyInspectorPreviewHtml() {
+  const sourcePath = join(propertyInspectorDirectory, "action.html");
+  const source = readFileSync(sourcePath, "utf8");
+  const scriptTag = '    <script src="action.js"></script>';
+  if (!source.includes(scriptTag)) {
+    throw new Error("The property inspector script tag changed.");
+  }
+
+  const baseUrl = pathToFileURL(`${propertyInspectorDirectory}${sep}`).href;
+  const actionInfo = JSON.stringify({
+    action: "com.courcelle.codex-controls.preset",
+    payload: { settings: defaultsFor("preset") },
+  });
+  const styleCatalog = JSON.stringify({
+    builtInStyles: BUILT_IN_STYLES,
+    customStyles: [],
+    type: "styles/catalog",
+  });
+  const mock = `    <script>
+      class PublicationPreviewSocket {
+        static OPEN = 1;
+        readyState = PublicationPreviewSocket.OPEN;
+        listeners = new Map();
+
+        constructor() {
+          queueMicrotask(() => this.emit("open", {}));
+        }
+
+        addEventListener(type, listener) {
+          const listeners = this.listeners.get(type) || [];
+          listeners.push(listener);
+          this.listeners.set(type, listeners);
+        }
+
+        emit(type, event) {
+          for (const listener of this.listeners.get(type) || []) listener(event);
+        }
+
+        send(data) {
+          const message = JSON.parse(data);
+          if (message.payload?.type !== "styles/get") return;
+          queueMicrotask(() => {
+            this.emit("message", {
+              data: JSON.stringify({
+                event: "sendToPropertyInspector",
+                payload: ${styleCatalog},
+              }),
+            });
+            const renderedStyles = [...document.querySelectorAll(".selected-style-name")]
+              .map((element) => element.textContent);
+            if (renderedStyles.join(",") !== "Ocean,Violet") return;
+            document.documentElement.dataset.publicationPreview = "ready";
+            const readyMarker = document.createElement("span");
+            readyMarker.style.cssText =
+              "background:#01fe02;left:0;height:4px;position:fixed;top:0;width:4px;z-index:2147483647";
+            document.body.append(readyMarker);
+          });
+        }
+      }
+      window.WebSocket = PublicationPreviewSocket;
+    </script>`;
+  const connect = `    <script>
+      window.connectElgatoStreamDeckSocket(
+        "0",
+        "publication-preview",
+        "registerPropertyInspector",
+        "{}",
+        ${JSON.stringify(actionInfo)},
+      );
+    </script>`;
+
+  return source
+    .replace("  <head>", `  <head>\n    <base href="${baseUrl}" />`)
+    .replace(scriptTag, `${mock}\n${scriptTag}\n${connect}`);
+}
+
+function capturePropertyInspector() {
+  const temporaryDirectory = mkdtempSync(
+    join(tmpdir(), "codex-controls-inspector-"),
+  );
+  const profile = join(temporaryDirectory, "browser-profile");
+  const html = join(temporaryDirectory, "property-inspector.html");
+  const screenshot = join(temporaryDirectory, "property-inspector.png");
+  const browser = browserPath();
+  const url = pathToFileURL(html).href;
+  const browserArguments = [
+    "--headless=new",
+    "--allow-file-access-from-files",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-gpu",
+    "--force-device-scale-factor=1",
+    "--hide-scrollbars",
+    "--no-first-run",
+    `--user-data-dir=${profile}`,
+    "--window-size=500,720",
+  ];
+
+  try {
+    writeFileSync(html, propertyInspectorPreviewHtml());
+    try {
+      execFileSync(
+        browser,
+        [...browserArguments, `--screenshot=${screenshot}`, url],
+        { stdio: "ignore", timeout: 5_000 },
+      );
+    } catch (error) {
+      if (error?.code !== "ETIMEDOUT" || !existsSync(screenshot)) throw error;
+    }
+    if (!existsSync(screenshot)) {
+      throw new Error(
+        "The browser did not create the property inspector image.",
+      );
+    }
+    const captureDetails = execFileSync(
+      "magick",
+      [screenshot, "-format", "%w,%h;%[pixel:p{1,1}]", "info:"],
+      { encoding: "utf8" },
+    );
+    if (
+      !captureDetails.startsWith("500,720;") ||
+      !captureDetails.includes("1,254,2")
+    ) {
+      throw new Error("The property inspector preview did not finish.");
+    }
+    return imageData(screenshot);
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
 function maskPluginLogo() {
   const source = join(pluginImages, "marketplace-source.png");
   const master = join(pluginImages, "marketplace@2x.png");
@@ -155,6 +309,7 @@ function shell(svg, body) {
 
 maskPluginLogo();
 const logo = imageData(join(pluginImages, "marketplace@2x.png"));
+const propertyInspector = capturePropertyInspector();
 const hero = shell(
   `<g filter="url(#shadow)">
     ${keyAt("model", 980, 308, 250)}
@@ -182,52 +337,30 @@ const hero = shell(
 
 const settings = shell(
   `<g filter="url(#shadow)">
-    ${keyAt("preset", 1225, 330, 270)}
-    ${keyAt("afterPreset", 1535, 330, 270)}
+    <rect x="92" y="94" width="556" height="810" rx="25" fill="#202226" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <rect x="92" y="94" width="556" height="54" rx="25" fill="#303238"/>
+    <rect x="92" y="124" width="556" height="24" fill="#303238"/>
+    <circle cx="122" cy="121" r="7" fill="#FF6259"/>
+    <circle cx="146" cy="121" r="7" fill="#FFBD2E"/>
+    <circle cx="170" cy="121" r="7" fill="#28C941"/>
+    <text x="370" y="128" text-anchor="middle" fill="#D9DCE3" font-size="17" font-weight="700">Preset settings</text>
+    <image href="${propertyInspector}" x="106" y="158" width="528" height="720" preserveAspectRatio="none"/>
+    <rect x="106" y="158" width="5" height="5" fill="#2D2D2D"/>
+    ${keyAt("preset", 1015, 400, 270)}
+    ${keyAt("afterPreset", 1425, 400, 270)}
   </g>`,
-  `<text x="100" y="102" fill="#9A8BFF" font-size="20" font-weight="800" letter-spacing="3">DEFAULT DISPLAY SETTINGS</text>
-  <text x="100" y="170" fill="#F7F9FF" font-size="55" font-weight="800">Ready on the first key.</text>
-  <text x="100" y="218" fill="#A8B4C8" font-size="23">The publication images use the plug-in defaults.</text>
-  <g transform="translate(100 274)">
-    <rect width="840" height="594" rx="24" fill="#24262B" stroke="#FFFFFF" stroke-opacity="0.12"/>
-    <rect width="840" height="62" rx="24" fill="#303238"/>
-    <rect y="40" width="840" height="22" fill="#303238"/>
-    <circle cx="31" cy="31" r="7" fill="#FF6259"/><circle cx="55" cy="31" r="7" fill="#FFBD2E"/><circle cx="79" cy="31" r="7" fill="#28C941"/>
-    <text x="420" y="39" text-anchor="middle" fill="#D9DCE3" font-size="17" font-weight="700">Preset settings</text>
-    <text x="28" y="104" fill="#D8DCE4" font-size="17">Add one value to set it. Add more values to cycle.</text>
-    <rect x="28" y="130" width="784" height="96" rx="10" fill="#2D2F34" stroke="#555960"/>
-    <text x="46" y="157" fill="#C9CDD6" font-size="15">Key display</text>
-    <rect x="46" y="176" width="18" height="18" rx="3" fill="#5D7EFF"/><path d="M50 185l4 4 7-9" fill="none" stroke="#fff" stroke-width="2.4"/>
-    <text x="74" y="191" fill="#EDF0F6" font-size="15">Show the action title</text>
-    <rect x="266" y="176" width="18" height="18" rx="3" fill="#5D7EFF"/><path d="M270 185l4 4 7-9" fill="none" stroke="#fff" stroke-width="2.4"/>
-    <text x="294" y="191" fill="#EDF0F6" font-size="15">Show the next value</text>
-    <text x="518" y="191" fill="#C9CDD6" font-size="15">Model 21</text>
-    <text x="652" y="191" fill="#C9CDD6" font-size="15">Thinking 18</text>
-    <g transform="translate(28 250)">
-      <rect width="784" height="132" rx="10" fill="#292B30" stroke="#474A50"/>
-      <text x="20" y="31" fill="#8E9BB0" font-size="13" font-weight="700" letter-spacing="1">VALUE 1</text>
-      <text x="20" y="68" fill="#C9CDD6" font-size="15">Model label</text><rect x="122" y="46" width="226" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="138" y="69" fill="#FFF" font-size="15">Sol</text>
-      <text x="382" y="68" fill="#C9CDD6" font-size="15">Model</text><rect x="446" y="46" width="310" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="462" y="69" fill="#FFF" font-size="15">gpt-5.6-sol</text>
-      <text x="20" y="108" fill="#C9CDD6" font-size="15">Thinking</text><rect x="122" y="86" width="226" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="138" y="109" fill="#FFF" font-size="15">Medium</text>
-      <text x="382" y="108" fill="#C9CDD6" font-size="15">Colors</text><rect x="446" y="86" width="310" height="34" rx="5" fill="#082F49" stroke="#38BDF8"/><text x="462" y="109" fill="#F0F9FF" font-size="15">Ocean</text>
-    </g>
-    <g transform="translate(28 400)">
-      <rect width="784" height="132" rx="10" fill="#292B30" stroke="#474A50"/>
-      <text x="20" y="31" fill="#8E9BB0" font-size="13" font-weight="700" letter-spacing="1">VALUE 2</text>
-      <text x="20" y="68" fill="#C9CDD6" font-size="15">Model label</text><rect x="122" y="46" width="226" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="138" y="69" fill="#FFF" font-size="15">Luna</text>
-      <text x="382" y="68" fill="#C9CDD6" font-size="15">Model</text><rect x="446" y="46" width="310" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="462" y="69" fill="#FFF" font-size="15">gpt-5.6-luna</text>
-      <text x="20" y="108" fill="#C9CDD6" font-size="15">Thinking</text><rect x="122" y="86" width="226" height="34" rx="5" fill="#1F2024" stroke="#555960"/><text x="138" y="109" fill="#FFF" font-size="15">High</text>
-      <text x="382" y="108" fill="#C9CDD6" font-size="15">Colors</text><rect x="446" y="86" width="310" height="34" rx="5" fill="#2E1065" stroke="#A78BFA"/><text x="462" y="109" fill="#F5F3FF" font-size="15">Violet</text>
-    </g>
-  </g>
-  <text x="1085" y="257" fill="#F7F9FF" font-size="33" font-weight="800">Current value</text>
-  <text x="1490" y="257" fill="#F7F9FF" font-size="33" font-weight="800">After one press</text>
-  <path d="M1505 465h22" stroke="#A78BFA" stroke-width="6" stroke-linecap="round"/><path d="m1519 451 15 14-15 14" fill="none" stroke="#A78BFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="1090" y="690" fill="#A8B4C8" font-size="21">The key shows Sol and Medium now.</text>
-  <text x="1090" y="726" fill="#A8B4C8" font-size="21">The next press selects Luna and High.</text>
-  <rect x="1090" y="780" width="665" height="68" rx="18" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
-  <circle cx="1127" cy="814" r="7" fill="#A78BFA"/>
-  <text x="1150" y="821" fill="#D9DEEA" font-size="18">One value sets. Two or more values cycle.</text>`,
+  `<text x="780" y="118" fill="#9A8BFF" font-size="20" font-weight="800" letter-spacing="3">ACTUAL DEFAULT SETTINGS</text>
+  <text x="780" y="190" fill="#F7F9FF" font-size="55" font-weight="800">The real controls.</text>
+  <text x="780" y="237" fill="#A8B4C8" font-size="23">Generated from the plug-in property inspector and key renderer.</text>
+  <text x="1008" y="348" fill="#F7F9FF" font-size="30" font-weight="800">Current value</text>
+  <text x="1410" y="348" fill="#F7F9FF" font-size="30" font-weight="800">After one press</text>
+  <path d="M1320 535h38" stroke="#A78BFA" stroke-width="6" stroke-linecap="round"/>
+  <path d="m1348 521 15 14-15 14" fill="none" stroke="#A78BFA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1000" y="738" fill="#A8B4C8" font-size="21">The key shows Sol and Medium now.</text>
+  <text x="1000" y="774" fill="#A8B4C8" font-size="21">The next press selects Luna and High.</text>
+  <rect x="1000" y="824" width="700" height="68" rx="18" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
+  <circle cx="1037" cy="858" r="7" fill="#A78BFA"/>
+  <text x="1060" y="865" fill="#D9DEEA" font-size="18">One value sets. Two or more values cycle.</text>`,
 );
 
 function writeSvg(name, content) {

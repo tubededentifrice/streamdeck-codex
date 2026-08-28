@@ -13,14 +13,28 @@ plug-in is ready for release.
 - The manifest contains the author, project URL, support URL, and production
   icon paths.
 
-Run this command when the default controls or publication design changes:
+Run this command after a key renderer, default setting, property inspector, or
+publication design change:
 
 ```sh
-npm run generate:publication-assets
+npm run generate:readme-images
 ```
 
-The command uses the actual key renderer and default action settings. It also
-creates the correct plug-in and category icon sizes. ImageMagick is required.
+The command uses the actual key renderer, default action settings, and property
+inspector files. It opens the property inspector in a headless browser and
+captures it with the default Preset settings. It also creates the correct
+plug-in and category icon sizes.
+
+ImageMagick and Chrome, Chromium, or Edge are required. On macOS, the command
+finds these browsers in their standard application locations. If the browser
+is in a different location, set `CODEX_CONTROLS_BROWSER` to its executable:
+
+```sh
+CODEX_CONTROLS_BROWSER=/path/to/browser npm run generate:readme-images
+```
+
+Review both generated images before you commit them. The browser capture can
+have small font differences between browser or macOS versions.
 
 ## Release checks
 

@@ -101,6 +101,18 @@ npm run build
 npm run validate
 ```
 
+Update the README and marketplace images after a key or property inspector
+change:
+
+```sh
+npm run generate:readme-images
+```
+
+The command uses the actual key renderer, default settings, property inspector
+HTML, property inspector CSS, and property inspector JavaScript. It requires
+ImageMagick and Chrome, Chromium, or Edge. See the
+[publication guide](docs/publishing.md) for browser setup details.
+
 The main code areas are:
 
 - `src/actions/` for Stream Deck actions.
