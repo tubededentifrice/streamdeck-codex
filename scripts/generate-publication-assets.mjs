@@ -100,8 +100,6 @@ function shortcutKey() {
   return decodeSvg(
     renderShortcutKey(
       current,
-      undefined,
-      choices.length,
       resolveStyleById(current.styleId),
       undefined,
       settings,
@@ -348,14 +346,14 @@ const hero = shell(
   <g transform="translate(112 660)">
     <rect width="650" height="92" rx="24" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
     <circle cx="42" cy="46" r="8" fill="#38BDF8"/>
-    <text x="68" y="40" fill="#F3F6FC" font-size="20" font-weight="700">Current and next values</text>
-    <text x="68" y="67" fill="#9EABC0" font-size="17">See the current value and the next value.</text>
+    <text x="68" y="40" fill="#F3F6FC" font-size="20" font-weight="700">Current and next settings</text>
+    <text x="68" y="67" fill="#9EABC0" font-size="17">See the current setting and the next setting.</text>
   </g>
   <text x="1060" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">MODEL</text>
   <text x="1258" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">THINKING</text>
   <text x="1490" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">PRESET</text>
   <text x="1680" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">SHORTCUT</text>
-  <text x="112" y="866" fill="#74839B" font-size="18">Changes apply to the selected task&apos;s next turn.</text>`,
+  <text x="112" y="866" fill="#74839B" font-size="18">Setting changes apply to the selected task&apos;s next turn.</text>`,
 );
 
 const settings = shell(

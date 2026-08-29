@@ -125,6 +125,7 @@ export function defaultsFor(kind: ActionKind): ActionSettings {
   if (kind === "shortcut")
     return {
       ...display,
+      showNext: false,
       shortcutFontSize: 18,
       shortcuts: structuredClone(DEFAULT_SHORTCUTS),
     };
@@ -193,7 +194,6 @@ export function choicesFor(
     const choices = (
       Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS
     )
-      .slice(0, MAX_CHOICES)
       .map((choice) => ({
         label: clean(choice?.label, 32),
         shortcut: cleanValue(choice?.shortcut),
@@ -205,8 +205,9 @@ export function choicesFor(
         label:
           choice.label || allowed.get(choice.shortcut as ShortcutId) || "Open",
         shortcut: choice.shortcut as ShortcutId,
-      }));
-    return uniqueBy(choices, (choice) => choice.shortcut);
+      }))
+      .slice(0, 1);
+    return choices;
   }
 
   const choices = (

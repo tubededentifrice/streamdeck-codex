@@ -12,9 +12,10 @@ the current values for local and remote tasks on macOS.
 - Use **Thinking** to change only the thinking level.
 - Use **Preset** to change the model and thinking level together.
 - Use **Shortcut** to open Review, Terminal, Browser, Files, or Side chat.
-- Add one value to make a direct set key.
-- Add two or more values to cycle through them in your chosen order.
-- See the current value and the next value on the key.
+- Add one value to make a direct Model, Thinking, or Preset key.
+- Add two or more values to a setting key to cycle through them in your chosen
+  order.
+- See the current value and the next value on each setting key.
 - Use 16 included color presets or save shared custom color presets.
 
 ![Default Preset settings and key states](marketplace/images/02-default-settings.png)
@@ -33,16 +34,15 @@ not change a response that Codex is already generating.
 
 1. Drag Model, Thinking, Preset, or Shortcut from **Codex Controls** to a key.
 2. Select the key in Stream Deck.
-3. Add the values in the order that you want.
+3. For Model, Thinking, or Preset, add the values in the order that you want.
 4. Set a short label and a color for each value.
-5. Choose whether the key shows its title and next value.
+5. Choose whether the key shows its title. Setting keys can also show the next
+   value.
 
 Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 `medium`, `high`, or `xhigh`.
 
-For a Shortcut key, select one or more Codex shortcuts. One shortcut opens
-directly. Two or more shortcuts open in the configured order. The key shows
-the shortcut that the next press will open.
+For a Shortcut key, select the one Codex shortcut that the key opens.
 
 If the current Codex value is not in the configured list, the key uses a gray
 color scheme. The first press then selects the first configured value.

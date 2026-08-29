@@ -37,29 +37,40 @@ describe("choice settings", () => {
       modelFontSize: 21,
       thinkingFontSize: 18,
     });
+    expect(defaultsFor("shortcut")).toMatchObject({
+      shortcutFontSize: 18,
+      showNext: false,
+      showTitle: true,
+    });
     expect(choicesFor("preset", defaultsFor("preset"))[0].label).toBe("Sol");
   });
 
-  it("accepts the five supported shortcuts and rejects invalid values", () => {
+  it("accepts each supported shortcut as the only configured command", () => {
+    for (const [shortcut, label] of [
+      ["review", "Review"],
+      ["terminal", "Terminal"],
+      ["browser", "Browser"],
+      ["files", "Files"],
+      ["side-chat", "Side chat"],
+    ] as const) {
+      expect(
+        choicesFor("shortcut", {
+          shortcuts: [{ label, shortcut }],
+        }),
+      ).toEqual([{ label, shortcut }]);
+    }
+  });
+
+  it("keeps the first valid shortcut from old multi-value settings", () => {
     expect(
       choicesFor("shortcut", {
         shortcuts: [
-          { label: "Code", shortcut: "review" },
+          { label: "Bad", shortcut: "settings" as "review" },
           { label: "Shell", shortcut: "terminal" },
           { label: "Web", shortcut: "browser" },
-          { label: "Tree", shortcut: "files" },
-          { label: "Ask", shortcut: "side-chat" },
-          { label: "Bad", shortcut: "settings" as "review" },
-          { label: "Again", shortcut: "review" },
         ],
       }),
-    ).toEqual([
-      { label: "Code", shortcut: "review" },
-      { label: "Shell", shortcut: "terminal" },
-      { label: "Web", shortcut: "browser" },
-      { label: "Tree", shortcut: "files" },
-      { label: "Ask", shortcut: "side-chat" },
-    ]);
+    ).toEqual([{ label: "Shell", shortcut: "terminal" }]);
   });
 
   it("finds the configured label for the active value", () => {

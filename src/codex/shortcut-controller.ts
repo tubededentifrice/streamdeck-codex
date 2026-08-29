@@ -16,7 +16,6 @@ import { shortcutLauncher } from "./shortcut-launcher";
 
 type VisibleShortcut = {
   action: KeyAction<ActionSettings>;
-  index: number;
   settings: ActionSettings;
 };
 
@@ -45,7 +44,7 @@ export class ShortcutController {
     action: KeyAction<ActionSettings>,
     settings: ActionSettings,
   ): Promise<void> {
-    this.#visible.set(action.id, { action, index: 0, settings });
+    this.#visible.set(action.id, { action, settings });
     await this.#render(action.id);
   }
 
@@ -57,12 +56,7 @@ export class ShortcutController {
     action: KeyAction<ActionSettings>,
     settings: ActionSettings,
   ): Promise<void> {
-    const previous = this.#visible.get(action.id);
-    this.#visible.set(action.id, {
-      action,
-      index: previous?.index ?? 0,
-      settings,
-    });
+    this.#visible.set(action.id, { action, settings });
     await this.#render(action.id);
   }
 
@@ -81,7 +75,7 @@ export class ShortcutController {
         visible,
         renderError(
           "shortcut",
-          new Error("Add at least one valid shortcut in the key settings."),
+          new Error("Select a valid shortcut in the key settings."),
           "update",
           settings,
         ),
@@ -90,16 +84,14 @@ export class ShortcutController {
       this.#busy.delete(action.id);
       return;
     }
-    const current = choices[visible.index % choices.length];
+    const current = choices[0];
     await this.#setImage(
       visible,
       renderLoading("shortcut", "OPENING…", settings),
     );
     try {
       await this.#launcher.open(current.shortcut);
-      if (choices.length > 1)
-        visible.index = (visible.index + 1) % choices.length;
-      await this.#blink(visible, choices);
+      await this.#blink(visible, current);
       streamDeck.logger.info(`Codex ${current.shortcut} shortcut opened.`);
     } catch (error) {
       streamDeck.logger.error("Codex shortcut failed to open.");
@@ -130,44 +122,31 @@ export class ShortcutController {
         visible,
         renderError(
           "shortcut",
-          new Error("Add at least one valid shortcut in the key settings."),
+          new Error("Select a valid shortcut in the key settings."),
           "refresh",
           visible.settings,
         ),
       );
       return;
     }
-    visible.index %= choices.length;
-    await this.#setImage(visible, this.#image(visible, choices));
+    await this.#setImage(visible, this.#image(visible, choices[0]));
   }
 
   #image(
     visible: VisibleShortcut,
-    choices: ShortcutChoice[],
+    choice: ShortcutChoice,
     borderColor?: string,
   ): string {
-    const current = choices[visible.index];
-    const next =
-      choices.length > 1
-        ? choices[(visible.index + 1) % choices.length]
-        : undefined;
-    const style = resolveStyleById(current.styleId, this.#styles.settings);
-    return renderShortcutKey(
-      current,
-      next,
-      choices.length,
-      style,
-      borderColor,
-      visible.settings,
-    );
+    const style = resolveStyleById(choice.styleId, this.#styles.settings);
+    return renderShortcutKey(choice, style, borderColor, visible.settings);
   }
 
   async #blink(
     visible: VisibleShortcut,
-    choices: ShortcutChoice[],
+    choice: ShortcutChoice,
   ): Promise<void> {
-    const normal = this.#image(visible, choices);
-    const bright = this.#image(visible, choices, "#ffffff");
+    const normal = this.#image(visible, choice);
+    const bright = this.#image(visible, choice, "#ffffff");
     for (let blink = 0; blink < 3; blink += 1) {
       await this.#setImage(visible, bright);
       await new Promise((resolve) => setTimeout(resolve, 55));

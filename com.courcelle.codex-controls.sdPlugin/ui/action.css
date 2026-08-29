@@ -49,6 +49,9 @@ p {
   gap: 5px;
   text-align: left;
 }
+.display-options label[hidden] {
+  display: none;
+}
 .display-options input[type="checkbox"] {
   height: 14px;
   margin: 0;
@@ -56,10 +59,8 @@ p {
   width: 14px;
 }
 .display-options .font-option {
-  width: 112px;
-}
-.display-options .font-option[hidden] {
-  display: none;
+  white-space: nowrap;
+  width: 128px;
 }
 .display-options input[type="number"] {
   margin-left: auto;
@@ -161,7 +162,7 @@ p {
   line-height: 9px;
   position: absolute;
   text-align: center;
-  top: 7%;
+  transform: translateY(-50%);
   width: 100%;
 }
 .preview-current {
@@ -201,17 +202,23 @@ p {
   line-height: 1;
   position: absolute;
   text-align: center;
-  top: 80%;
+  transform: translateY(-50%);
   white-space: nowrap;
   width: 100%;
 }
 .preview-dot {
-  bottom: 5%;
   border-radius: 50%;
   height: 3px;
   left: calc(50% - 1.5px);
   position: absolute;
+  transform: translateY(-50%);
   width: 3px;
+}
+.preview-shortcut-icon {
+  height: 100%;
+  left: 0;
+  position: absolute;
+  width: 100%;
 }
 label {
   color: #d0d0d0;

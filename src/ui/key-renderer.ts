@@ -95,29 +95,64 @@ function fontSize(value: unknown, fallback: number): number {
   return Math.max(10, Math.min(48, Math.round(value)));
 }
 
-function valuePositions(
+type KeyLayout = {
+  footerTop?: number;
+  headerCenter?: number;
+  primaryCenter: number;
+  secondaryCenter?: number;
+};
+
+function keyLayout(
   showTitle: boolean,
   showNext: boolean,
   primaryFontSize: number,
   secondaryFontSize?: number,
-): [number, number?] {
-  const top = showTitle ? 29 : 10;
-  const bottom = showNext ? 100 : 134;
-  const center = (top + bottom) / 2;
-  if (secondaryFontSize === undefined) return [center];
-
+): KeyLayout {
+  const titleHeight = 15 * 0.7;
   const primaryHeight = primaryFontSize * 0.7;
-  const secondaryHeight = secondaryFontSize * 0.7;
-  const gap = Math.min(
-    4,
-    Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
-  );
-  const totalHeight = primaryHeight + gap + secondaryHeight;
-  const blockTop = center - totalHeight / 2;
-  return [
-    Number((blockTop + primaryHeight / 2).toFixed(2)),
-    Number((blockTop + primaryHeight + gap + secondaryHeight / 2).toFixed(2)),
-  ];
+  const secondaryHeight =
+    secondaryFontSize === undefined ? 0 : secondaryFontSize * 0.7;
+  const valueGap =
+    secondaryFontSize === undefined
+      ? 0
+      : Math.min(
+          4,
+          Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
+        );
+  const valueHeight = primaryHeight + valueGap + secondaryHeight;
+  const footerHeight = 30;
+  const sectionCount = 1 + Number(showTitle) + Number(showNext);
+  const fixedHeight =
+    valueHeight + (showTitle ? titleHeight : 0) + (showNext ? footerHeight : 0);
+  const sectionGap =
+    sectionCount === 1
+      ? 0
+      : Math.max(4, Math.min(22, (128 - fixedHeight) / (sectionCount - 1)));
+  const totalHeight = fixedHeight + (sectionCount - 1) * sectionGap;
+  let top = 72 - totalHeight / 2;
+  let headerCenter: number | undefined;
+  if (showTitle) {
+    headerCenter = top + titleHeight / 2;
+    top += titleHeight + sectionGap;
+  }
+  const primaryCenter = top + primaryHeight / 2;
+  const secondaryCenter =
+    secondaryFontSize === undefined
+      ? undefined
+      : top + primaryHeight + valueGap + secondaryHeight / 2;
+  top += valueHeight;
+  const footerTop = showNext ? top + sectionGap : undefined;
+  return {
+    footerTop:
+      footerTop === undefined ? undefined : Number(footerTop.toFixed(2)),
+    headerCenter:
+      headerCenter === undefined ? undefined : Number(headerCenter.toFixed(2)),
+    primaryCenter: Number(primaryCenter.toFixed(2)),
+    secondaryCenter:
+      secondaryCenter === undefined
+        ? undefined
+        : Number(secondaryCenter.toFixed(2)),
+  };
 }
 
 function alphabeticBaseline(center: number, size: number): number {
@@ -159,17 +194,17 @@ export function renderKey(
       ? fontSize(display.thinkingFontSize, 21)
       : fontSize(display.modelFontSize, 21);
   const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
-  const [primaryCenter, secondaryCenter] = valuePositions(
+  const layout = keyLayout(
     showTitle,
     showNext,
     primaryFontSize,
     secondary ? secondaryFontSize : undefined,
   );
-  const primaryY = alphabeticBaseline(primaryCenter, primaryFontSize);
+  const primaryY = alphabeticBaseline(layout.primaryCenter, primaryFontSize);
   const secondaryY =
-    secondaryCenter === undefined
+    layout.secondaryCenter === undefined
       ? undefined
-      : alphabeticBaseline(secondaryCenter, secondaryFontSize);
+      : alphabeticBaseline(layout.secondaryCenter, secondaryFontSize);
   const secondaryMarkup = secondary
     ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
     : "";
@@ -177,12 +212,12 @@ export function renderKey(
     ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
     : "NO CHOICES";
   const headerMarkup = showTitle
-    ? `<text x="72" y="${alphabeticBaseline(20, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
+    ? `<text x="72" y="${alphabeticBaseline(layout.headerCenter!, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
     : "";
   const footerMarkup = showNext
-    ? `<line x1="20" y1="102" x2="124" y2="102" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="${alphabeticBaseline(121, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
-		<circle cx="72" cy="133" r="3" fill="${accent}"/>`
+    ? `<line x1="20" y1="${layout.footerTop! + 1}" x2="124" y2="${layout.footerTop! + 1}" stroke="${accent}" stroke-width="2" opacity="0.55"/>
+		<text x="72" y="${alphabeticBaseline(layout.footerTop! + 15, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
+		<circle cx="72" cy="${layout.footerTop! + 27}" r="3" fill="${accent}"/>`
     : "";
   return svg(
     `
@@ -214,34 +249,34 @@ function shortcutIcon(
 
 export function renderShortcutKey(
   current: ShortcutChoice,
-  next: ShortcutChoice | undefined,
-  choiceCount: number,
   style?: KeyStyle,
   borderColor?: string,
   display: DisplayOptions & { shortcutFontSize?: number } = {},
 ): string {
   const showTitle = display.showTitle !== false;
-  const showNext = display.showNext !== false;
   const accent = style?.borderColor ?? COLORS.shortcut;
   const font = style?.fontColor ?? "#ffffff";
   const background = style?.backgroundColor ?? "#101319";
   const labelSize = fontSize(display.shortcutFontSize, 18);
-  const labelY = showNext ? 95 : 115;
-  const iconOffset = showTitle ? 0 : 7;
+  const titleHeight = 15 * 0.7;
+  const iconHeight = 56;
+  const labelHeight = labelSize * 0.7;
+  const totalHeight =
+    iconHeight + labelHeight + 4 + (showTitle ? titleHeight + 6 : 0);
+  let top = 72 - totalHeight / 2;
+  const headerCenter = showTitle ? top + titleHeight / 2 : undefined;
+  if (showTitle) top += titleHeight + 6;
+  const iconCenter = top + iconHeight / 2;
+  top += iconHeight + 4;
+  const labelCenter = top + labelHeight / 2;
   const headerMarkup = showTitle
-    ? `<text x="72" y="${alphabeticBaseline(20, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.2">SHORTCUT</text>`
-    : "";
-  const footerMarkup = showNext
-    ? `<line x1="20" y1="107" x2="124" y2="107" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="${alphabeticBaseline(123, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(choiceCount > 1 && next ? `NEXT  ${next.label.toUpperCase()}`.slice(0, 28) : "OPEN CODEX")}</text>
-		<circle cx="72" cy="134" r="3" fill="${accent}"/>`
+    ? `<text x="72" y="${alphabeticBaseline(headerCenter!, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.2">SHORTCUT</text>`
     : "";
   return svg(
     `
 		${headerMarkup}
-		<g transform="translate(0 ${iconOffset})">${shortcutIcon(current.shortcut, font, background)}</g>
-		<text x="72" y="${alphabeticBaseline(labelY + iconOffset, labelSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${labelSize}" font-weight="800">${escapeXml(current.label.toUpperCase().slice(0, 18))}</text>
-		${footerMarkup}
+		<g transform="translate(0 ${Number((iconCenter - 62).toFixed(2))})">${shortcutIcon(current.shortcut, font, background)}</g>
+		<text x="72" y="${alphabeticBaseline(labelCenter, labelSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${labelSize}" font-weight="800">${escapeXml(current.label.toUpperCase().slice(0, 18))}</text>
 	`,
     borderColor ?? accent,
     style?.backgroundColor,

@@ -13,6 +13,7 @@ import { codexController } from "../codex/controller";
 import { shortcutController } from "../codex/shortcut-controller";
 import {
   type ActionSettings,
+  choicesFor,
   defaultsFor,
   type SettingsActionKind,
 } from "../domain/settings";
@@ -130,6 +131,8 @@ function withDefaults(
   const result = structuredClone(
     Object.keys(settings).length === 0 ? defaultsFor(kind) : settings,
   );
+  result.showNext = false;
+  result.shortcuts = choicesFor("shortcut", result);
   const values = result.shortcuts;
   if (Array.isArray(values))
     for (const [index, value] of values.entries()) {

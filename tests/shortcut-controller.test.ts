@@ -50,7 +50,7 @@ describe("shortcut controller", () => {
     await first;
   });
 
-  it("opens configured shortcuts in order and wraps", async () => {
+  it("uses only the first configured shortcut", async () => {
     const launcher = { open: vi.fn(async () => undefined) };
     const controller = new ShortcutController(launcher, styles);
     const { action, images } = fakeAction();
@@ -67,15 +67,13 @@ describe("shortcut controller", () => {
 
     await controller.show(action, settings);
     expect(images.at(-1)).toContain("%3EREVIEW%3C");
-    expect(images.at(-1)).toContain("NEXT%20%20TERMINAL");
+    expect(images.at(-1)).not.toContain("NEXT");
 
     await controller.press(action, settings);
     expect(launcher.open).toHaveBeenNthCalledWith(1, "review");
-    expect(images.at(-1)).toContain("%3ETERMINAL%3C");
-    expect(images.at(-1)).toContain("NEXT%20%20REVIEW");
 
     await controller.press(action, settings);
-    expect(launcher.open).toHaveBeenNthCalledWith(2, "terminal");
+    expect(launcher.open).toHaveBeenNthCalledWith(2, "review");
     expect(images.at(-1)).toContain("%3EREVIEW%3C");
   });
 
@@ -123,7 +121,6 @@ describe("shortcut controller", () => {
     const settings: ActionSettings = {
       shortcuts: [
         { label: "Review", shortcut: "review", styleId: "builtin:emerald" },
-        { label: "Files", shortcut: "files", styleId: "builtin:amber" },
       ],
     };
 

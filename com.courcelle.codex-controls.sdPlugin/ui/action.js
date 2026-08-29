@@ -101,6 +101,16 @@
     const key = settingKey[kind];
     if (!Array.isArray(settings[key]) || settings[key].length === 0)
       settings[key] = structuredClone(defaults[kind]);
+    const settingsBeforeNormalization = JSON.stringify(settings);
+    if (kind === "shortcut") {
+      const configured = settings[key].find((value) =>
+        shortcutOptions.some(([id]) => id === value?.shortcut),
+      );
+      settings[key] = [configured || structuredClone(defaults.shortcut[0])];
+      settings.showNext = false;
+    }
+    const normalizedSettingsChanged =
+      settingsBeforeNormalization !== JSON.stringify(settings);
     websocket = new WebSocket(`ws://127.0.0.1:${port}`);
     websocket.addEventListener("open", () => {
       websocket.send(
@@ -109,10 +119,12 @@
       sendToPlugin({ type: "styles/get" });
       document.querySelector("#intro").textContent =
         kind === "shortcut"
-          ? "Add one shortcut for a direct key. Add more shortcuts to cycle in this order."
+          ? "Select the Codex shortcut that this key opens."
           : "Add one value for a direct set key. Add more values to cycle in this order.";
+      document.querySelector("#add").hidden = kind === "shortcut";
       renderDisplayOptions();
       render();
+      if (normalizedSettingsChanged) save();
     });
     websocket.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
@@ -169,6 +181,7 @@
     input.required = true;
     input.addEventListener("input", () => {
       value[field] = input.value;
+      refreshPreviewText();
       save();
     });
     row.append(labelElement, input);
@@ -195,6 +208,7 @@
     }
     select.addEventListener("change", () => {
       value.effort = select.value;
+      refreshPreviewText();
       save();
     });
     row.append(labelElement, select);
@@ -241,6 +255,7 @@
     document.querySelector("#show-title").checked =
       settings.showTitle !== false;
     document.querySelector("#show-next").checked = settings.showNext !== false;
+    document.querySelector("#show-next-row").hidden = kind === "shortcut";
     const modelFontRow = document.querySelector("#model-font-row");
     const thinkingFontRow = document.querySelector("#thinking-font-row");
     const shortcutFontRow = document.querySelector("#shortcut-font-row");
@@ -267,29 +282,133 @@
       : fallback;
   }
 
-  function valuePositions(primaryFontSize, secondaryFontSize) {
-    const top = settings.showTitle === false ? 10 : 29;
-    const bottom = settings.showNext === false ? 134 : 100;
-    const center = (top + bottom) / 2;
-    if (secondaryFontSize === undefined) return [center];
-
+  function keyLayout(showTitle, showNext, primaryFontSize, secondaryFontSize) {
+    const titleHeight = 15 * 0.7;
     const primaryHeight = primaryFontSize * 0.7;
-    const secondaryHeight = secondaryFontSize * 0.7;
-    const gap = Math.min(
-      4,
-      Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
-    );
-    const blockTop = center - (primaryHeight + gap + secondaryHeight) / 2;
-    return [
-      blockTop + primaryHeight / 2,
-      blockTop + primaryHeight + gap + secondaryHeight / 2,
-    ];
+    const secondaryHeight =
+      secondaryFontSize === undefined ? 0 : secondaryFontSize * 0.7;
+    const valueGap =
+      secondaryFontSize === undefined
+        ? 0
+        : Math.min(
+            4,
+            Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
+          );
+    const valueHeight = primaryHeight + valueGap + secondaryHeight;
+    const footerHeight = 30;
+    const sectionCount = 1 + Number(showTitle) + Number(showNext);
+    const fixedHeight =
+      valueHeight +
+      (showTitle ? titleHeight : 0) +
+      (showNext ? footerHeight : 0);
+    const sectionGap =
+      sectionCount === 1
+        ? 0
+        : Math.max(4, Math.min(22, (128 - fixedHeight) / (sectionCount - 1)));
+    const totalHeight = fixedHeight + (sectionCount - 1) * sectionGap;
+    let top = 72 - totalHeight / 2;
+    let headerCenter;
+    if (showTitle) {
+      headerCenter = top + titleHeight / 2;
+      top += titleHeight + sectionGap;
+    }
+    const primaryCenter = top + primaryHeight / 2;
+    const secondaryCenter =
+      secondaryFontSize === undefined
+        ? undefined
+        : top + primaryHeight + valueGap + secondaryHeight / 2;
+    top += valueHeight;
+    return {
+      footerTop: showNext ? top + sectionGap : undefined,
+      headerCenter,
+      primaryCenter,
+      secondaryCenter,
+    };
   }
 
-  function createKeyPreview(value, style) {
+  function shortcutLayout(labelSize, showTitle) {
+    const titleHeight = 15 * 0.7;
+    const iconHeight = 56;
+    const labelHeight = labelSize * 0.7;
+    const totalHeight =
+      iconHeight + labelHeight + 4 + (showTitle ? titleHeight + 6 : 0);
+    let top = 72 - totalHeight / 2;
+    const headerCenter = showTitle ? top + titleHeight / 2 : undefined;
+    if (showTitle) top += titleHeight + 6;
+    const iconCenter = top + iconHeight / 2;
+    top += iconHeight + 4;
+    return {
+      headerCenter,
+      iconOffset: iconCenter - 62,
+      labelCenter: top + labelHeight / 2,
+    };
+  }
+
+  function shortcutIconMarkup(shortcut, color, background) {
+    if (shortcut === "terminal")
+      return `<polygon points="47,47 66,62 47,77 47,69 57,62 47,55" fill="${color}"/><rect x="67" y="74" width="28" height="6" rx="3" fill="${color}"/>`;
+    if (shortcut === "browser")
+      return `<circle cx="72" cy="62" r="26" fill="${color}"/><circle cx="72" cy="62" r="20" fill="${background}"/><ellipse cx="72" cy="62" rx="10" ry="23" fill="${color}"/><ellipse cx="72" cy="62" rx="6" ry="20" fill="${background}"/><rect x="47" y="60" width="50" height="4" fill="${color}"/>`;
+    if (shortcut === "files")
+      return `<polygon points="40,48 65,48 72,55 104,55 104,87 40,87" fill="${color}"/><rect x="46" y="62" width="52" height="19" rx="2" fill="${background}"/>`;
+    if (shortcut === "side-chat")
+      return `<polygon points="40,43 89,43 89,75 60,75 46,86 46,75 40,75" fill="${color}"/><polygon points="70,57 104,57 104,83 91,83 79,92 79,83 70,83" fill="${color}"/><rect x="75" y="62" width="24" height="16" rx="2" fill="${background}"/>`;
+    return `<rect x="41" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="74" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="47" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="47" y="63" width="12" height="4" rx="2" fill="${background}"/><rect x="80" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="80" y="63" width="12" height="4" rx="2" fill="${background}"/>`;
+  }
+
+  function previewTarget(index) {
+    const configured = values();
+    const target =
+      configured.length > 1
+        ? configured[(index + 1) % configured.length]
+        : configured[index];
+    if (!target) return "NO CHOICES";
+    const prefix = configured.length > 1 ? "NEXT" : "SET";
+    const label =
+      kind === "thinking"
+        ? target.effort || "medium"
+        : kind === "preset"
+          ? `${target.label || "MODEL"} / ${target.effort || "medium"}`
+          : target.label || "MODEL";
+    return `${prefix}  ${label}`.toUpperCase().slice(0, 28);
+  }
+
+  function previewPrimary(value) {
+    return (
+      kind === "thinking"
+        ? value.effort || "medium"
+        : value.label || (kind === "shortcut" ? "REVIEW" : "MODEL")
+    )
+      .toUpperCase()
+      .slice(0, 18);
+  }
+
+  function refreshPreviewText() {
+    document.querySelectorAll(".key-preview").forEach((preview) => {
+      const index = Number(preview.dataset.choiceIndex);
+      const value = values()[index];
+      if (!value) return;
+      const current = preview.querySelector(".preview-current");
+      const secondary = preview.querySelector(".preview-secondary");
+      const next = preview.querySelector(".preview-next");
+      if (current) current.textContent = previewPrimary(value);
+      if (secondary)
+        secondary.textContent = (value.effort || "medium").toUpperCase();
+      if (next) next.textContent = previewTarget(index);
+    });
+  }
+
+  function createKeyPreview(value, style, index) {
     const preview = document.createElement("div");
     preview.className = "key-preview";
+    preview.dataset.choiceIndex = String(index);
     preview.setAttribute("aria-hidden", "true");
+
+    const backgroundColor = style?.backgroundColor || "#303030";
+    const borderColor = style?.borderColor || "#a3a3a3";
+    const fontColor = style?.fontColor || "#f5f5f5";
+    const showTitle = settings.showTitle !== false;
+    const showNext = kind !== "shortcut" && settings.showNext !== false;
 
     const title = document.createElement("span");
     title.className = "preview-title";
@@ -297,12 +416,7 @@
 
     const current = document.createElement("span");
     current.className = "preview-current";
-    current.textContent =
-      kind === "thinking"
-        ? (value.effort || "medium").toUpperCase()
-        : (
-            value.label || (kind === "shortcut" ? "REVIEW" : "MODEL")
-          ).toUpperCase();
+    current.textContent = previewPrimary(value);
     const primaryFontSize = validFontSize(
       kind === "thinking"
         ? settings.thinkingFontSize
@@ -325,42 +439,57 @@
       Math.round(secondaryFontSize * 0.45),
     )}px`;
     secondary.hidden = kind !== "preset";
-    const [primaryY, secondaryY] = valuePositions(
-      primaryFontSize,
-      kind === "preset" ? secondaryFontSize : undefined,
-    );
-    current.style.top = `${(primaryY / 144) * 100}%`;
-    secondary.style.top = `${((secondaryY ?? 0) / 144) * 100}%`;
-
     const divider = document.createElement("span");
     divider.className = "preview-divider";
 
     const next = document.createElement("span");
     next.className = "preview-next";
-    next.textContent =
-      kind === "thinking"
-        ? "NEXT HIGH"
-        : kind === "shortcut"
-          ? values().length > 1
-            ? "NEXT SHORTCUT"
-            : "OPEN CODEX"
-          : "NEXT MODEL";
+    next.textContent = previewTarget(index);
 
     const dot = document.createElement("span");
     dot.className = "preview-dot";
-    preview.append(title, current, secondary, divider, next, dot);
+    if (kind === "shortcut") {
+      const layout = shortcutLayout(primaryFontSize, showTitle);
+      const icon = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg",
+      );
+      icon.classList.add("preview-shortcut-icon");
+      icon.setAttribute("viewBox", "0 0 144 144");
+      icon.style.top = `${(layout.iconOffset / 144) * 100}%`;
+      icon.innerHTML = shortcutIconMarkup(
+        value.shortcut,
+        fontColor,
+        backgroundColor,
+      );
+      title.style.top = `${((layout.headerCenter ?? 0) / 144) * 100}%`;
+      current.style.top = `${(layout.labelCenter / 144) * 100}%`;
+      preview.append(title, icon, current);
+    } else {
+      const layout = keyLayout(
+        showTitle,
+        showNext,
+        primaryFontSize,
+        kind === "preset" ? secondaryFontSize : undefined,
+      );
+      title.style.top = `${((layout.headerCenter ?? 0) / 144) * 100}%`;
+      current.style.top = `${(layout.primaryCenter / 144) * 100}%`;
+      secondary.style.top = `${((layout.secondaryCenter ?? 0) / 144) * 100}%`;
+      divider.style.top = `${(((layout.footerTop ?? 0) + 1) / 144) * 100}%`;
+      next.style.top = `${(((layout.footerTop ?? 0) + 15) / 144) * 100}%`;
+      dot.style.top = `${(((layout.footerTop ?? 0) + 27) / 144) * 100}%`;
+      preview.append(title, current, secondary, divider, next, dot);
+    }
 
-    const backgroundColor = style?.backgroundColor || "#303030";
-    const borderColor = style?.borderColor || "#a3a3a3";
     preview.style.background = backgroundColor;
     preview.style.borderColor = borderColor;
-    preview.style.color = style?.fontColor || "#f5f5f5";
+    preview.style.color = fontColor;
     divider.style.background = borderColor;
     dot.style.background = borderColor;
-    title.hidden = settings.showTitle === false;
-    divider.hidden = settings.showNext === false;
-    next.hidden = settings.showNext === false;
-    dot.hidden = settings.showNext === false;
+    title.hidden = !showTitle;
+    divider.hidden = !showNext;
+    next.hidden = !showNext;
+    dot.hidden = !showNext;
     return preview;
   }
 
@@ -384,7 +513,7 @@
     const selectedName = document.createElement("span");
     selectedName.className = "selected-style-name";
     selectedName.textContent = selectedStyle?.name || "Unavailable preset";
-    summary.append(selectedName, createKeyPreview(value, selectedStyle));
+    summary.append(selectedName, createKeyPreview(value, selectedStyle, index));
     picker.append(summary);
 
     const panel = document.createElement("div");
@@ -412,7 +541,7 @@
           );
           const name = document.createElement("span");
           name.textContent = style.name;
-          option.append(createKeyPreview(value, style), name);
+          option.append(createKeyPreview(value, style, index), name);
           option.addEventListener("click", () => {
             value.styleId = style.id;
             picker.open = false;
@@ -458,6 +587,10 @@
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
       if (kind !== "model" && kind !== "shortcut") thinkingRow(choice, value);
       styleRow(choice, value, index);
+      if (kind === "shortcut") {
+        container.append(choice);
+        return;
+      }
       const buttons = document.createElement("div");
       buttons.className = "buttons";
       for (const [text, move] of [
@@ -496,6 +629,7 @@
   }
 
   document.querySelector("#add").addEventListener("click", () => {
+    if (kind === "shortcut") return;
     if (values().length >= 20) return;
     const styleId =
       styleCatalog.builtInStyles[values().length % 16]?.id ||
@@ -505,9 +639,7 @@
         ? { label: "", model: "", styleId }
         : kind === "thinking"
           ? { label: "", effort: "", styleId }
-          : kind === "shortcut"
-            ? { label: "Review", shortcut: "review", styleId }
-            : { label: "", model: "", effort: "", styleId },
+          : { label: "", model: "", effort: "", styleId },
     );
     render();
     save();
