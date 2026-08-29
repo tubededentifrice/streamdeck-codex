@@ -62,9 +62,19 @@ desktop. It does not send task content to the plug-in author.
 
 ## Image order and alternative text
 
+### Icon and thumbnail
+
+- `icon.png` — The 288 by 288 Codex Controls icon.
+- `thumbnail.png` — The 1920 by 960 Codex Controls product thumbnail.
+
+### Gallery
+
 1. `images/01-default-controls.png` — Four Codex Controls keys with the default
    Model, Thinking, Preset, and Shortcut settings.
 2. `images/02-default-settings.png` — The default Preset settings and two keys
    that show the current and next values.
+3. `images/03-shortcuts.png` — The default Shortcut settings and the five
+   available Codex views.
 
-The images use the plug-in defaults. They do not use local user settings.
+The images use the current plug-in renderer, default font sizes, default
+alignment, and default settings. They do not use local user settings.

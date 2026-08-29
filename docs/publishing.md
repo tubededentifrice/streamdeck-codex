@@ -7,7 +7,9 @@ plug-in is ready for release.
 
 - `marketplace/listing.md` contains the product-page text, search terms,
   privacy text, and image order.
-- `marketplace/images/` contains the 1920 by 960 publication images.
+- `marketplace/icon.png` contains the 288 by 288 submission icon.
+- `marketplace/thumbnail.png` contains the 1920 by 960 product thumbnail.
+- `marketplace/images/` contains three 1920 by 960 gallery images.
 - `SUPPORT.md` contains the public support process and data-use statement.
 - `CHANGELOG.md` contains user-visible release notes.
 - The manifest contains the author, project URL, support URL, and production
@@ -22,8 +24,8 @@ npm run generate:readme-images
 
 The command uses the actual key renderer, default action settings, and property
 inspector files. It opens the property inspector in a headless browser and
-captures it with the default Preset settings. It also creates the correct
-plug-in and category icon sizes.
+captures the default Preset and Shortcut settings. It also creates the
+submission, plug-in, and category icon sizes.
 
 ImageMagick and Chrome, Chromium, or Edge are required. On macOS, the command
 finds these browsers in their standard application locations. If the browser
@@ -33,7 +35,7 @@ is in a different location, set `CODEX_CONTROLS_BROWSER` to its executable:
 CODEX_CONTROLS_BROWSER=/path/to/browser npm run generate:readme-images
 ```
 
-Review both generated images before you commit them. The browser capture can
+Review all generated images before you commit them. The browser capture can
 have small font differences between browser or macOS versions.
 
 ## Release checks

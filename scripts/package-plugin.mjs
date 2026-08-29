@@ -57,5 +57,6 @@ run("npx", [
   stage,
   "--output",
   output,
+  "--force",
   "--no-update-check",
 ]);

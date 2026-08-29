@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       "com.courcelle.codex-controls.sdPlugin/bin/**",
       "coverage/**",
+      "dist/**",
       "node_modules/**",
     ],
   },

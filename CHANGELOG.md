@@ -10,6 +10,7 @@ This file records the user-visible changes in Codex Controls.
   release process for publication.
 - Add Model, Thinking, and Preset controls.
 - Add a Shortcut control for Review, Terminal, Browser, Files, and Side chat.
+- Hide the unsupported Add value control in Shortcut settings.
 - Change selected local task settings and show selected remote task settings.
 - Show the current value and the next value on each setting key.
 - Add 16 fixed color presets and shared custom color presets.

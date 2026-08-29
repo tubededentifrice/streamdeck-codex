@@ -18,6 +18,7 @@ import {
   defaultsFor,
   displayChoice,
   nextChoice,
+  SHORTCUT_OPTIONS,
 } from "../src/domain/settings.ts";
 import {
   activeStyleFor,
@@ -35,6 +36,7 @@ const pluginImages = join(
 );
 const sourceDirectory = join(root, "marketplace", "source");
 const imageDirectory = join(root, "marketplace", "images");
+const marketplaceDirectory = join(root, "marketplace");
 const propertyInspectorDirectory = join(
   root,
   "com.courcelle.codex-controls.sdPlugin",
@@ -93,19 +95,27 @@ function keyFor(kind, codexState) {
   );
 }
 
-function shortcutKey() {
+function shortcutKey(
+  choice = choicesFor("shortcut", defaultsFor("shortcut"))[0],
+) {
   const settings = defaultsFor("shortcut");
-  const choices = choicesFor("shortcut", settings);
-  const current = choices[0];
   return decodeSvg(
     renderShortcutKey(
-      current,
-      resolveStyleById(current.styleId),
+      choice,
+      resolveStyleById(choice.styleId),
       undefined,
       settings,
     ),
   );
 }
+
+const shortcutStyles = [
+  "builtin:emerald",
+  "builtin:amber",
+  "builtin:cyan",
+  "builtin:slate",
+  "builtin:violet",
+];
 
 const keys = {
   afterPreset: keyFor("preset", {
@@ -116,6 +126,12 @@ const keys = {
   model: keyFor("model", state),
   preset: keyFor("preset", state),
   shortcut: shortcutKey(),
+  ...Object.fromEntries(
+    SHORTCUT_OPTIONS.map((choice, index) => [
+      `shortcut-${choice.shortcut}`,
+      shortcutKey({ ...choice, styleId: shortcutStyles[index] }),
+    ]),
+  ),
   thinking: keyFor("thinking", state),
 };
 
@@ -136,7 +152,7 @@ function browserPath() {
   );
 }
 
-function propertyInspectorPreviewHtml() {
+function propertyInspectorPreviewHtml(kind, expectedStyles) {
   const sourcePath = join(propertyInspectorDirectory, "action.html");
   const source = readFileSync(sourcePath, "utf8");
   const scriptTag = '    <script src="action.js"></script>';
@@ -146,8 +162,8 @@ function propertyInspectorPreviewHtml() {
 
   const baseUrl = pathToFileURL(`${propertyInspectorDirectory}${sep}`).href;
   const actionInfo = JSON.stringify({
-    action: "com.courcelle.codex-controls.preset",
-    payload: { settings: defaultsFor("preset") },
+    action: `com.courcelle.codex-controls.${kind}`,
+    payload: { settings: defaultsFor(kind) },
   });
   const styleCatalog = JSON.stringify({
     builtInStyles: BUILT_IN_STYLES,
@@ -186,7 +202,11 @@ function propertyInspectorPreviewHtml() {
             });
             const renderedStyles = [...document.querySelectorAll(".selected-style-name")]
               .map((element) => element.textContent);
-            if (renderedStyles.join(",") !== "Ocean,Violet") return;
+            if (renderedStyles.join(",") !== ${JSON.stringify(expectedStyles.join(","))}) return;
+            if (
+              ${JSON.stringify(kind)} === "shortcut" &&
+              document.querySelector("#add").getClientRects().length > 0
+            ) return;
             document.documentElement.dataset.publicationPreview = "ready";
             const readyMarker = document.createElement("span");
             readyMarker.style.cssText =
@@ -212,7 +232,7 @@ function propertyInspectorPreviewHtml() {
     .replace(scriptTag, `${mock}\n${scriptTag}\n${connect}`);
 }
 
-function capturePropertyInspector() {
+function capturePropertyInspector(kind, expectedStyles) {
   const temporaryDirectory = mkdtempSync(
     join(tmpdir(), "codex-controls-inspector-"),
   );
@@ -237,7 +257,7 @@ function capturePropertyInspector() {
   ];
 
   try {
-    writeFileSync(html, propertyInspectorPreviewHtml());
+    writeFileSync(html, propertyInspectorPreviewHtml(kind, expectedStyles));
     try {
       execFileSync(
         browser,
@@ -329,7 +349,13 @@ function shell(svg, body) {
 
 maskPluginLogo();
 const logo = imageData(join(pluginImages, "marketplace@2x.png"));
-const propertyInspector = capturePropertyInspector();
+const presetPropertyInspector = capturePropertyInspector("preset", [
+  "Ocean",
+  "Violet",
+]);
+const shortcutPropertyInspector = capturePropertyInspector("shortcut", [
+  "Emerald",
+]);
 const hero = shell(
   `<g filter="url(#shadow)">
     ${keyAt("model", 995, 308, 200)}
@@ -366,7 +392,7 @@ const settings = shell(
     <circle cx="146" cy="121" r="7" fill="#FFBD2E"/>
     <circle cx="170" cy="121" r="7" fill="#28C941"/>
     <text x="370" y="128" text-anchor="middle" fill="#D9DCE3" font-size="17" font-weight="700">Preset settings</text>
-    <image href="${propertyInspector}" x="106" y="158" width="528" height="720" preserveAspectRatio="none"/>
+    <image href="${presetPropertyInspector}" x="106" y="158" width="528" height="720" preserveAspectRatio="none"/>
     <rect x="106" y="158" width="5" height="5" fill="#2D2D2D"/>
     ${keyAt("preset", 1015, 400, 270)}
     ${keyAt("afterPreset", 1425, 400, 270)}
@@ -383,6 +409,37 @@ const settings = shell(
   <rect x="1000" y="824" width="700" height="68" rx="18" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
   <circle cx="1037" cy="858" r="7" fill="#A78BFA"/>
   <text x="1060" y="865" fill="#D9DEEA" font-size="18">One value sets. Two or more values cycle.</text>`,
+);
+
+const shortcuts = shell(
+  `<g filter="url(#shadow)">
+    <rect x="92" y="94" width="556" height="810" rx="25" fill="#202226" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <rect x="92" y="94" width="556" height="54" rx="25" fill="#303238"/>
+    <rect x="92" y="124" width="556" height="24" fill="#303238"/>
+    <circle cx="122" cy="121" r="7" fill="#FF6259"/>
+    <circle cx="146" cy="121" r="7" fill="#FFBD2E"/>
+    <circle cx="170" cy="121" r="7" fill="#28C941"/>
+    <text x="370" y="128" text-anchor="middle" fill="#D9DCE3" font-size="17" font-weight="700">Shortcut settings</text>
+    <image href="${shortcutPropertyInspector}" x="106" y="158" width="528" height="720" preserveAspectRatio="none"/>
+    <rect x="106" y="158" width="5" height="5" fill="#2D2D2D"/>
+    ${keyAt("shortcut-review", 780, 375, 190)}
+    ${keyAt("shortcut-terminal", 1002, 375, 190)}
+    ${keyAt("shortcut-browser", 1224, 375, 190)}
+    ${keyAt("shortcut-files", 1446, 375, 190)}
+    ${keyAt("shortcut-side-chat", 1668, 375, 190)}
+  </g>`,
+  `<text x="780" y="118" fill="#59E5B5" font-size="20" font-weight="800" letter-spacing="3">ACTUAL SHORTCUT CONTROL</text>
+  <text x="780" y="190" fill="#F7F9FF" font-size="55" font-weight="800">Open the view you need.</text>
+  <text x="780" y="237" fill="#A8B4C8" font-size="23">Each key opens one selected Codex view.</text>
+  <text x="875" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">REVIEW</text>
+  <text x="1097" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">TERMINAL</text>
+  <text x="1319" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">BROWSER</text>
+  <text x="1541" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">FILES</text>
+  <text x="1763" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">SIDE CHAT</text>
+  <rect x="780" y="742" width="970" height="92" rx="24" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
+  <circle cx="824" cy="788" r="8" fill="#34D399"/>
+  <text x="850" y="782" fill="#F3F6FC" font-size="20" font-weight="700">Default display: title shown and shortcut text at 18 px</text>
+  <text x="850" y="810" fill="#9EABC0" font-size="17">The current renderer controls the font size and vertical alignment.</text>`,
 );
 
 function writeSvg(name, content) {
@@ -406,19 +463,35 @@ function renderPng(source, output, width, height) {
   execFileSync("magick", args, { stdio: "inherit" });
 }
 
+function verifyDimensions(path, width, height) {
+  const dimensions = execFileSync(
+    "magick",
+    [path, "-format", "%wx%h", "info:"],
+    { encoding: "utf8" },
+  );
+  if (dimensions !== `${width}x${height}`) {
+    throw new Error(`${path} is ${dimensions}; expected ${width}x${height}.`);
+  }
+}
+
 const heroSource = writeSvg("01-default-controls", hero);
 const settingsSource = writeSvg("02-default-settings", settings);
-renderPng(
-  heroSource,
-  join(imageDirectory, "01-default-controls.png"),
-  1920,
-  960,
-);
+const shortcutsSource = writeSvg("03-shortcuts", shortcuts);
+const heroImage = join(imageDirectory, "01-default-controls.png");
+renderPng(heroSource, heroImage, 1920, 960);
 renderPng(
   settingsSource,
   join(imageDirectory, "02-default-settings.png"),
   1920,
   960,
+);
+renderPng(shortcutsSource, join(imageDirectory, "03-shortcuts.png"), 1920, 960);
+copyFileSync(heroImage, join(marketplaceDirectory, "thumbnail.png"));
+renderPng(
+  join(pluginImages, "marketplace@2x.png"),
+  join(marketplaceDirectory, "icon.png"),
+  288,
+  288,
 );
 renderPng(
   join(pluginImages, "category-icon-source.svg"),
@@ -432,3 +505,13 @@ renderPng(
   56,
   56,
 );
+
+verifyDimensions(join(marketplaceDirectory, "icon.png"), 288, 288);
+verifyDimensions(join(marketplaceDirectory, "thumbnail.png"), 1920, 960);
+for (const name of [
+  "01-default-controls.png",
+  "02-default-settings.png",
+  "03-shortcuts.png",
+]) {
+  verifyDimensions(join(imageDirectory, name), 1920, 960);
+}
