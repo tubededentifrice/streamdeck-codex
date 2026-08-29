@@ -1,9 +1,56 @@
 import { describe, expect, it } from "vitest";
 
 import { CodexError } from "../src/codex/errors";
-import { renderError, renderKey, renderLoading } from "../src/ui/key-renderer";
+import {
+  renderError,
+  renderKey,
+  renderLoading,
+  renderShortcutKey,
+} from "../src/ui/key-renderer";
 
 describe("key renderer", () => {
+  it("renders each shortcut with its selected colors and a useful next label", () => {
+    for (const shortcut of [
+      "review",
+      "terminal",
+      "browser",
+      "files",
+      "side-chat",
+    ] as const) {
+      const image = decodeURIComponent(
+        renderShortcutKey(
+          { label: shortcut, shortcut },
+          { label: "Next", shortcut: "review" },
+          2,
+          {
+            backgroundColor: "#112233",
+            borderColor: "#445566",
+            fontColor: "#DDEEFF",
+            id: "custom:test",
+            name: "Test",
+          },
+        ),
+      );
+      expect(image).toContain('fill="#112233"');
+      expect(image).toContain('stroke="#445566"');
+      expect(image).toContain('fill="#DDEEFF"');
+      expect(image).toContain(`>${shortcut.toUpperCase()}<`);
+      expect(image).toContain("NEXT  NEXT");
+    }
+  });
+
+  it("shows one shortcut as a direct Codex action", () => {
+    const image = decodeURIComponent(
+      renderShortcutKey(
+        { label: "Side chat", shortcut: "side-chat" },
+        undefined,
+        1,
+      ),
+    );
+    expect(image).toContain(">SIDE CHAT<");
+    expect(image).toContain("OPEN CODEX");
+  });
+
   it("shows configured labels for the current and next model", () => {
     const image = decodeURIComponent(
       renderKey(

@@ -30,12 +30,27 @@
         styleId: "builtin:violet",
       },
     ],
+    shortcut: [
+      {
+        label: "Review",
+        shortcut: "review",
+        styleId: "builtin:emerald",
+      },
+    ],
   };
   const settingKey = {
     model: "models",
     thinking: "thinking",
     preset: "presets",
+    shortcut: "shortcuts",
   };
+  const shortcutOptions = [
+    ["review", "Review"],
+    ["terminal", "Terminal"],
+    ["browser", "Browser"],
+    ["files", "Files"],
+    ["side-chat", "Side chat"],
+  ];
   const thinkingLevels = [
     "none",
     "minimal",
@@ -79,7 +94,9 @@
       ? "model"
       : actionInfo.action.endsWith(".thinking")
         ? "thinking"
-        : "preset";
+        : actionInfo.action.endsWith(".shortcut")
+          ? "shortcut"
+          : "preset";
     settings = actionInfo.payload.settings || {};
     const key = settingKey[kind];
     if (!Array.isArray(settings[key]) || settings[key].length === 0)
@@ -90,6 +107,10 @@
         JSON.stringify({ event: registerEvent, uuid: inspectorId }),
       );
       sendToPlugin({ type: "styles/get" });
+      document.querySelector("#intro").textContent =
+        kind === "shortcut"
+          ? "Add one shortcut for a direct key. Add more shortcuts to cycle in this order."
+          : "Add one value for a direct set key. Add more values to cycle in this order.";
       renderDisplayOptions();
       render();
     });
@@ -180,6 +201,38 @@
     container.append(row);
   }
 
+  function shortcutRow(container, value) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const labelElement = document.createElement("label");
+    labelElement.textContent = "Shortcut";
+    const select = document.createElement("select");
+    const current = shortcutOptions.some(([id]) => id === value.shortcut)
+      ? value.shortcut
+      : "review";
+    value.shortcut = current;
+    for (const [id, label] of shortcutOptions) {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = label;
+      option.selected = id === current;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      value.shortcut = select.value;
+      const option = shortcutOptions.find(([id]) => id === select.value);
+      if (
+        !value.label ||
+        shortcutOptions.some(([, label]) => label === value.label)
+      )
+        value.label = option?.[1] || "Open";
+      render();
+      save();
+    });
+    row.append(labelElement, select);
+    container.append(row);
+  }
+
   function allStyles() {
     return [...styleCatalog.builtInStyles, ...styleCatalog.customStyles];
   }
@@ -190,8 +243,10 @@
     document.querySelector("#show-next").checked = settings.showNext !== false;
     const modelFontRow = document.querySelector("#model-font-row");
     const thinkingFontRow = document.querySelector("#thinking-font-row");
-    modelFontRow.hidden = kind === "thinking";
-    thinkingFontRow.hidden = kind === "model";
+    const shortcutFontRow = document.querySelector("#shortcut-font-row");
+    modelFontRow.hidden = kind === "thinking" || kind === "shortcut";
+    thinkingFontRow.hidden = kind === "model" || kind === "shortcut";
+    shortcutFontRow.hidden = kind !== "shortcut";
     document.querySelector("#model-font-size").value = validFontSize(
       settings.modelFontSize,
       21,
@@ -199,6 +254,10 @@
     document.querySelector("#thinking-font-size").value = validFontSize(
       settings.thinkingFontSize,
       kind === "preset" ? 18 : 21,
+    );
+    document.querySelector("#shortcut-font-size").value = validFontSize(
+      settings.shortcutFontSize,
+      18,
     );
   }
 
@@ -241,10 +300,16 @@
     current.textContent =
       kind === "thinking"
         ? (value.effort || "medium").toUpperCase()
-        : (value.label || "MODEL").toUpperCase();
+        : (
+            value.label || (kind === "shortcut" ? "REVIEW" : "MODEL")
+          ).toUpperCase();
     const primaryFontSize = validFontSize(
-      kind === "thinking" ? settings.thinkingFontSize : settings.modelFontSize,
-      21,
+      kind === "thinking"
+        ? settings.thinkingFontSize
+        : kind === "shortcut"
+          ? settings.shortcutFontSize
+          : settings.modelFontSize,
+      kind === "shortcut" ? 18 : 21,
     );
     current.style.fontSize = `${Math.max(
       7,
@@ -272,7 +337,14 @@
 
     const next = document.createElement("span");
     next.className = "preview-next";
-    next.textContent = kind === "thinking" ? "NEXT HIGH" : "NEXT MODEL";
+    next.textContent =
+      kind === "thinking"
+        ? "NEXT HIGH"
+        : kind === "shortcut"
+          ? values().length > 1
+            ? "NEXT SHORTCUT"
+            : "OPEN CODEX"
+          : "NEXT MODEL";
 
     const dot = document.createElement("span");
     dot.className = "preview-dot";
@@ -371,7 +443,10 @@
     values().forEach((value, index) => {
       const choice = document.createElement("section");
       choice.className = "choice";
-      if (kind !== "thinking")
+      if (kind === "shortcut") {
+        shortcutRow(choice, value);
+        inputRow(choice, "Label", "label", value, "Short key label");
+      } else if (kind !== "thinking")
         inputRow(
           choice,
           kind === "preset" ? "Model label" : "Label",
@@ -379,9 +454,9 @@
           value,
           kind === "preset" ? "Sol" : "Short key label",
         );
-      if (kind !== "thinking")
+      if (kind !== "thinking" && kind !== "shortcut")
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
-      if (kind !== "model") thinkingRow(choice, value);
+      if (kind !== "model" && kind !== "shortcut") thinkingRow(choice, value);
       styleRow(choice, value, index);
       const buttons = document.createElement("div");
       buttons.className = "buttons";
@@ -430,7 +505,9 @@
         ? { label: "", model: "", styleId }
         : kind === "thinking"
           ? { label: "", effort: "", styleId }
-          : { label: "", model: "", effort: "", styleId },
+          : kind === "shortcut"
+            ? { label: "Review", shortcut: "review", styleId }
+            : { label: "", model: "", effort: "", styleId },
     );
     render();
     save();
@@ -450,10 +527,15 @@
   for (const [selector, setting] of [
     ["#model-font-size", "modelFontSize"],
     ["#thinking-font-size", "thinkingFontSize"],
+    ["#shortcut-font-size", "shortcutFontSize"],
   ]) {
     document.querySelector(selector).addEventListener("change", (event) => {
       const fallback =
-        setting === "modelFontSize" || kind !== "preset" ? 21 : 18;
+        setting === "shortcutFontSize"
+          ? 18
+          : setting === "modelFontSize" || kind !== "preset"
+            ? 21
+            : 18;
       const value = validFontSize(event.currentTarget.valueAsNumber, fallback);
       event.currentTarget.value = value;
       settings[setting] = value;

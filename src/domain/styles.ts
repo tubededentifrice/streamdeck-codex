@@ -1,6 +1,6 @@
 import type { JsonObject } from "@elgato/utils";
 
-import type { ActionKind, CodexState } from "./settings";
+import type { CodexState, SettingsActionKind } from "./settings";
 
 export type KeyStyle = Readonly<{
   backgroundColor: string;
@@ -24,6 +24,7 @@ type StyledChoice = {
 export type StyleActionSettings = {
   models?: StyledChoice[];
   presets?: StyledChoice[];
+  shortcuts?: StyledChoice[];
   thinking?: StyledChoice[];
 };
 
@@ -131,7 +132,7 @@ export function resolveStyleById(
 }
 
 export function activeStyleFor(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   settings: StyleActionSettings,
   state: Pick<CodexState, "effort" | "model">,
   globalSettings: Pick<PluginGlobalSettings, "customStyles"> = {},

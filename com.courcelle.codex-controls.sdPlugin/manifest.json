@@ -36,12 +36,26 @@
       "States": [
         { "Image": "imgs/actions/preset/key", "TitleAlignment": "middle" }
       ]
+    },
+    {
+      "Name": "Shortcut",
+      "UUID": "com.courcelle.codex-controls.shortcut",
+      "Icon": "imgs/actions/shortcut/icon",
+      "Tooltip": "Open Review, Terminal, Browser, Files, or Side chat in Codex.",
+      "PropertyInspectorPath": "ui/action.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/shortcut/key",
+          "TitleAlignment": "middle"
+        }
+      ]
     }
   ],
   "Category": "Codex Controls",
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
-  "Description": "Change local Codex task settings and show local or remote task values from Stream Deck.",
+  "Description": "Change Codex task settings and open Codex panels from Stream Deck.",
   "Icon": "imgs/plugin/marketplace",
   "URL": "https://github.com/tubededentifrice/codex-streamdeck",
   "SupportURL": "https://github.com/tubededentifrice/codex-streamdeck/issues",

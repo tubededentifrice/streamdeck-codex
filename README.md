@@ -1,16 +1,17 @@
 # Codex Controls for Stream Deck
 
 Codex Controls lets you change the model and thinking level of the selected
-local Codex task from Stream Deck. It also shows the current values for local
-and remote tasks on macOS.
+local Codex task from Stream Deck. It also opens common Codex panels and shows
+the current values for local and remote tasks on macOS.
 
-![Codex Controls with the default Model, Thinking, and Preset keys](marketplace/images/01-default-controls.png)
+![Codex Controls with the default Model, Thinking, Preset, and Shortcut keys](marketplace/images/01-default-controls.png)
 
 ## What it does
 
 - Use **Model** to change only the model.
 - Use **Thinking** to change only the thinking level.
 - Use **Preset** to change the model and thinking level together.
+- Use **Shortcut** to open Review, Terminal, Browser, Files, or Side chat.
 - Add one value to make a direct set key.
 - Add two or more values to cycle through them in your chosen order.
 - See the current value and the next value on the key.
@@ -30,7 +31,7 @@ not change a response that Codex is already generating.
 
 ## Configure a key
 
-1. Drag Model, Thinking, or Preset from **Codex Controls** to a key.
+1. Drag Model, Thinking, Preset, or Shortcut from **Codex Controls** to a key.
 2. Select the key in Stream Deck.
 3. Add the values in the order that you want.
 4. Set a short label and a color for each value.
@@ -38,6 +39,10 @@ not change a response that Codex is already generating.
 
 Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 `medium`, `high`, or `xhigh`.
+
+For a Shortcut key, select one or more Codex shortcuts. One shortcut opens
+directly. Two or more shortcuts open in the configured order. The key shows
+the shortcut that the next press will open.
 
 If the current Codex value is not in the configured list, the key uses a gray
 color scheme. The first press then selects the first configured value.
@@ -53,8 +58,13 @@ The Codex desktop interfaces used for task control can change between releases.
 This plug-in contains a compatibility layer for these interfaces. A Codex
 desktop update can require a plug-in update.
 
-Remote task detection and display use Codex desktop IPC. The plug-in does not
+Remote task detection and setting controls use Codex desktop IPC. They do not
 use Accessibility, Screen Recording, OCR, or UI clicks.
+
+Shortcut keys activate Codex and use its standard keyboard commands. These
+keys use macOS Accessibility for keyboard input. macOS can ask you to allow
+Stream Deck to control keyboard input. If you changed a Codex keyboard command,
+restore its standard value before you use the related key.
 
 Codex desktop side chats use their parent task. The key shows the parent task
 settings while a side chat is open. It changes these settings for a local

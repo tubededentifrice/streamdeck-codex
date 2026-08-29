@@ -21,6 +21,13 @@ describe("choice settings", () => {
     expect(choicesFor("model", defaultsFor("model"))).toHaveLength(2);
     expect(choicesFor("thinking", defaultsFor("thinking"))).toHaveLength(2);
     expect(choicesFor("preset", defaultsFor("preset"))).toHaveLength(2);
+    expect(choicesFor("shortcut", defaultsFor("shortcut"))).toEqual([
+      {
+        label: "Review",
+        shortcut: "review",
+        styleId: "builtin:emerald",
+      },
+    ]);
     expect(defaultsFor("model")).toMatchObject({
       modelFontSize: 21,
       showNext: true,
@@ -31,6 +38,28 @@ describe("choice settings", () => {
       thinkingFontSize: 18,
     });
     expect(choicesFor("preset", defaultsFor("preset"))[0].label).toBe("Sol");
+  });
+
+  it("accepts the five supported shortcuts and rejects invalid values", () => {
+    expect(
+      choicesFor("shortcut", {
+        shortcuts: [
+          { label: "Code", shortcut: "review" },
+          { label: "Shell", shortcut: "terminal" },
+          { label: "Web", shortcut: "browser" },
+          { label: "Tree", shortcut: "files" },
+          { label: "Ask", shortcut: "side-chat" },
+          { label: "Bad", shortcut: "settings" as "review" },
+          { label: "Again", shortcut: "review" },
+        ],
+      }),
+    ).toEqual([
+      { label: "Code", shortcut: "review" },
+      { label: "Shell", shortcut: "terminal" },
+      { label: "Web", shortcut: "browser" },
+      { label: "Tree", shortcut: "files" },
+      { label: "Ask", shortcut: "side-chat" },
+    ]);
   });
 
   it("finds the configured label for the active value", () => {

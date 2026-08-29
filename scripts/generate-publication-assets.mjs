@@ -19,8 +19,12 @@ import {
   displayChoice,
   nextChoice,
 } from "../src/domain/settings.ts";
-import { activeStyleFor, BUILT_IN_STYLES } from "../src/domain/styles.ts";
-import { renderKey } from "../src/ui/key-renderer.ts";
+import {
+  activeStyleFor,
+  BUILT_IN_STYLES,
+  resolveStyleById,
+} from "../src/domain/styles.ts";
+import { renderKey, renderShortcutKey } from "../src/ui/key-renderer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginImages = join(
@@ -66,7 +70,7 @@ function decodeSvg(dataUrl) {
 function innerSvg(svg) {
   const match = /<svg[^>]*>([\s\S]*)<\/svg>/.exec(svg);
   if (!match) throw new Error("The key renderer returned invalid SVG.");
-  return match[1];
+  return match[1].replace(/[ \t]+$/gm, "");
 }
 
 function keyFor(kind, codexState) {
@@ -89,6 +93,22 @@ function keyFor(kind, codexState) {
   );
 }
 
+function shortcutKey() {
+  const settings = defaultsFor("shortcut");
+  const choices = choicesFor("shortcut", settings);
+  const current = choices[0];
+  return decodeSvg(
+    renderShortcutKey(
+      current,
+      undefined,
+      choices.length,
+      resolveStyleById(current.styleId),
+      undefined,
+      settings,
+    ),
+  );
+}
+
 const keys = {
   afterPreset: keyFor("preset", {
     ...state,
@@ -97,6 +117,7 @@ const keys = {
   }),
   model: keyFor("model", state),
   preset: keyFor("preset", state),
+  shortcut: shortcutKey(),
   thinking: keyFor("thinking", state),
 };
 
@@ -312,9 +333,10 @@ const logo = imageData(join(pluginImages, "marketplace@2x.png"));
 const propertyInspector = capturePropertyInspector();
 const hero = shell(
   `<g filter="url(#shadow)">
-    ${keyAt("model", 980, 308, 250)}
-    ${keyAt("thinking", 1265, 308, 250)}
-    ${keyAt("preset", 1550, 308, 250)}
+    ${keyAt("model", 995, 308, 200)}
+    ${keyAt("thinking", 1215, 308, 200)}
+    ${keyAt("preset", 1435, 308, 200)}
+    ${keyAt("shortcut", 1655, 308, 200)}
   </g>`,
   `<image href="${logo}" x="112" y="100" width="118" height="118"/>
   <text x="256" y="148" fill="#F7F9FF" font-size="34" font-weight="700">Codex Controls</text>
@@ -322,16 +344,17 @@ const hero = shell(
   <text x="112" y="360" fill="#F7F9FF" font-size="76" font-weight="800">Control Codex</text>
   <text x="112" y="446" fill="#F7F9FF" font-size="76" font-weight="800">from Stream Deck.</text>
   <text x="116" y="526" fill="#BAC5D8" font-size="27">Set a model, set a thinking level,</text>
-  <text x="116" y="565" fill="#BAC5D8" font-size="27">or change both with one preset.</text>
+  <text x="116" y="565" fill="#BAC5D8" font-size="27">change both, or open a Codex panel.</text>
   <g transform="translate(112 660)">
     <rect width="650" height="92" rx="24" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
     <circle cx="42" cy="46" r="8" fill="#38BDF8"/>
     <text x="68" y="40" fill="#F3F6FC" font-size="20" font-weight="700">Current and next values</text>
     <text x="68" y="67" fill="#9EABC0" font-size="17">See the current value and the next value.</text>
   </g>
-  <text x="1100" y="624" fill="#91A0B8" font-size="19" font-weight="700" letter-spacing="2">MODEL</text>
-  <text x="1344" y="624" fill="#91A0B8" font-size="19" font-weight="700" letter-spacing="2">THINKING</text>
-  <text x="1640" y="624" fill="#91A0B8" font-size="19" font-weight="700" letter-spacing="2">PRESET</text>
+  <text x="1060" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">MODEL</text>
+  <text x="1258" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">THINKING</text>
+  <text x="1490" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">PRESET</text>
+  <text x="1680" y="574" fill="#91A0B8" font-size="17" font-weight="700" letter-spacing="2">SHORTCUT</text>
   <text x="112" y="866" fill="#74839B" font-size="18">Changes apply to the selected task&apos;s next turn.</text>`,
 );
 

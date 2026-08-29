@@ -1,7 +1,7 @@
 {
   "name": "codex-streamdeck",
   "version": "0.1.0",
-  "description": "Control the model and thinking level of the selected Codex task from Stream Deck.",
+  "description": "Control selected Codex task settings and open Codex panels from Stream Deck.",
   "author": "Vincent Courcelle",
   "license": "MIT",
   "private": true,

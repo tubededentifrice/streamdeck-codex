@@ -1,9 +1,9 @@
 import streamDeck, { type KeyAction } from "@elgato/streamdeck";
 
 import type {
-  ActionKind,
   ActionSettings,
   CodexState,
+  SettingsActionKind,
 } from "../domain/settings";
 import {
   choicesFor,
@@ -19,7 +19,7 @@ import { CodexError, isResolvingTaskError } from "./errors";
 
 type VisibleAction = {
   action: KeyAction<ActionSettings>;
-  kind: ActionKind;
+  kind: SettingsActionKind;
   settings: ActionSettings;
 };
 
@@ -71,7 +71,7 @@ export class CodexController {
 
   show(
     action: KeyAction<ActionSettings>,
-    kind: ActionKind,
+    kind: SettingsActionKind,
     settings: ActionSettings,
   ): Promise<void> {
     this.#visible.set(action.id, { action, kind, settings });
@@ -84,7 +84,7 @@ export class CodexController {
 
   settingsChanged(
     action: KeyAction<ActionSettings>,
-    kind: ActionKind,
+    kind: SettingsActionKind,
     settings: ActionSettings,
   ): Promise<void> {
     this.#visible.set(action.id, { action, kind, settings });
@@ -93,7 +93,7 @@ export class CodexController {
 
   async press(
     action: KeyAction<ActionSettings>,
-    kind: ActionKind,
+    kind: SettingsActionKind,
     settings: ActionSettings,
   ): Promise<void> {
     const routeRevision = this.#client.routeRevision;
@@ -299,7 +299,7 @@ export class CodexController {
 
   async #blinkBorder(
     action: KeyAction<ActionSettings>,
-    kind: ActionKind,
+    kind: SettingsActionKind,
     settings: ActionSettings,
     state: CodexState,
   ): Promise<void> {

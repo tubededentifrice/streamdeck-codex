@@ -1,6 +1,9 @@
 import type { JsonObject } from "@elgato/utils";
 
-export type ActionKind = "model" | "thinking" | "preset";
+export type SettingsActionKind = "model" | "thinking" | "preset";
+export type ActionKind = SettingsActionKind | "shortcut";
+export type ShortcutId =
+  "review" | "terminal" | "browser" | "files" | "side-chat";
 
 export type ModelChoice = { label: string; model: string; styleId?: string };
 export type ThinkingChoice = {
@@ -14,6 +17,11 @@ export type PresetChoice = {
   model: string;
   styleId?: string;
 };
+export type ShortcutChoice = {
+  label: string;
+  shortcut: ShortcutId;
+  styleId?: string;
+};
 
 export type ActionSettings = JsonObject & {
   modelFontSize?: number;
@@ -21,6 +29,8 @@ export type ActionSettings = JsonObject & {
   presets?: PresetChoice[];
   showNext?: boolean;
   showTitle?: boolean;
+  shortcutFontSize?: number;
+  shortcuts?: ShortcutChoice[];
   thinkingFontSize?: number;
   thinking?: ThinkingChoice[];
 };
@@ -56,6 +66,19 @@ const DEFAULT_PRESETS: PresetChoice[] = [
     styleId: "builtin:violet",
   },
 ];
+
+const DEFAULT_SHORTCUTS: ShortcutChoice[] = [
+  { label: "Review", shortcut: "review", styleId: "builtin:emerald" },
+];
+
+export const SHORTCUT_OPTIONS: readonly Readonly<ShortcutChoice>[] =
+  Object.freeze([
+    Object.freeze({ label: "Review", shortcut: "review" }),
+    Object.freeze({ label: "Terminal", shortcut: "terminal" }),
+    Object.freeze({ label: "Browser", shortcut: "browser" }),
+    Object.freeze({ label: "Files", shortcut: "files" }),
+    Object.freeze({ label: "Side chat", shortcut: "side-chat" }),
+  ]);
 
 const MAX_CHOICES = 20;
 const VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -99,6 +122,12 @@ export function defaultsFor(kind: ActionKind): ActionSettings {
       thinking: structuredClone(DEFAULT_THINKING),
       thinkingFontSize: 21,
     };
+  if (kind === "shortcut")
+    return {
+      ...display,
+      shortcutFontSize: 18,
+      shortcuts: structuredClone(DEFAULT_SHORTCUTS),
+    };
   return {
     ...display,
     modelFontSize: 21,
@@ -120,9 +149,13 @@ export function choicesFor(
   settings: ActionSettings,
 ): PresetChoice[];
 export function choicesFor(
+  kind: "shortcut",
+  settings: ActionSettings,
+): ShortcutChoice[];
+export function choicesFor(
   kind: ActionKind,
   settings: ActionSettings,
-): Array<ModelChoice | ThinkingChoice | PresetChoice> {
+): Array<ModelChoice | ThinkingChoice | PresetChoice | ShortcutChoice> {
   if (kind === "model") {
     const choices = (
       Array.isArray(settings.models) ? settings.models : DEFAULT_MODELS
@@ -151,6 +184,29 @@ export function choicesFor(
       .filter((choice) => choice.effort)
       .map((choice) => ({ ...choice, label: choice.label || choice.effort }));
     return uniqueBy(choices, (choice) => choice.effort);
+  }
+
+  if (kind === "shortcut") {
+    const allowed = new Map(
+      SHORTCUT_OPTIONS.map((choice) => [choice.shortcut, choice.label]),
+    );
+    const choices = (
+      Array.isArray(settings.shortcuts) ? settings.shortcuts : DEFAULT_SHORTCUTS
+    )
+      .slice(0, MAX_CHOICES)
+      .map((choice) => ({
+        label: clean(choice?.label, 32),
+        shortcut: cleanValue(choice?.shortcut),
+        styleId: cleanStyleId(choice?.styleId),
+      }))
+      .filter((choice) => allowed.has(choice.shortcut as ShortcutId))
+      .map((choice) => ({
+        ...choice,
+        label:
+          choice.label || allowed.get(choice.shortcut as ShortcutId) || "Open",
+        shortcut: choice.shortcut as ShortcutId,
+      }));
+    return uniqueBy(choices, (choice) => choice.shortcut);
   }
 
   const choices = (
@@ -187,7 +243,7 @@ export function nextChoice(
   state: CodexState,
 ): PresetChoice | undefined;
 export function nextChoice(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   settings: ActionSettings,
   state: CodexState,
 ): ModelChoice | ThinkingChoice | PresetChoice | undefined {
@@ -207,7 +263,7 @@ export function nextChoice(
 }
 
 export function displayChoice(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   settings: ActionSettings,
   state: CodexState,
 ): ModelChoice | ThinkingChoice | PresetChoice | undefined {
@@ -226,7 +282,7 @@ export function displayChoice(
 }
 
 export function targetState(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   choice: ModelChoice | ThinkingChoice | PresetChoice,
   current: CodexState,
 ): Pick<CodexState, "effort" | "model"> {

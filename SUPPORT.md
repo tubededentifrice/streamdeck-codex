@@ -13,7 +13,7 @@ to report a problem or request a feature.
 ## Information to include
 
 - The macOS, Codex desktop, and Stream Deck versions.
-- The action type: Model, Thinking, or Preset.
+- The action type: Model, Thinking, Preset, or Shortcut.
 - Whether the selected task is local or remote.
 - The text that the key shows.
 - The steps that reproduce the problem.

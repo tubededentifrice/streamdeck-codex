@@ -3,6 +3,9 @@ import type {
   CodexState,
   ModelChoice,
   PresetChoice,
+  SettingsActionKind,
+  ShortcutChoice,
+  ShortcutId,
   ThinkingChoice,
 } from "../domain/settings";
 import type { KeyStyle } from "../domain/styles";
@@ -17,6 +20,7 @@ type DisplayOptions = {
 const COLORS: Record<ActionKind, string> = {
   model: "#2f80ed",
   preset: "#7b61ff",
+  shortcut: "#34d399",
   thinking: "#f2994a",
 };
 
@@ -53,7 +57,7 @@ function compactModel(model: string): string {
 }
 
 function currentLines(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   state: CodexState,
   choice: ModelChoice | ThinkingChoice | PresetChoice | undefined,
 ): [string, string?] {
@@ -73,7 +77,7 @@ function currentLines(
 }
 
 function nextLabel(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   choice: ModelChoice | ThinkingChoice | PresetChoice | undefined,
 ): string | undefined {
   if (!choice) return undefined;
@@ -134,7 +138,7 @@ function stackCenters(sizes: number[], gap: number): number[] {
 }
 
 export function renderKey(
-  kind: ActionKind,
+  kind: SettingsActionKind,
   state: CodexState,
   next: ModelChoice | ThinkingChoice | PresetChoice | undefined,
   choiceCount: number,
@@ -185,6 +189,58 @@ export function renderKey(
 		${headerMarkup}
 		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
 		${secondaryMarkup}
+		${footerMarkup}
+	`,
+    borderColor ?? accent,
+    style?.backgroundColor,
+  );
+}
+
+function shortcutIcon(
+  shortcut: ShortcutId,
+  color: string,
+  background: string,
+): string {
+  if (shortcut === "terminal")
+    return `<polygon points="47,47 66,62 47,77 47,69 57,62 47,55" fill="${color}"/><rect x="67" y="74" width="28" height="6" rx="3" fill="${color}"/>`;
+  if (shortcut === "browser")
+    return `<circle cx="72" cy="62" r="26" fill="${color}"/><circle cx="72" cy="62" r="20" fill="${background}"/><ellipse cx="72" cy="62" rx="10" ry="23" fill="${color}"/><ellipse cx="72" cy="62" rx="6" ry="20" fill="${background}"/><rect x="47" y="60" width="50" height="4" fill="${color}"/>`;
+  if (shortcut === "files")
+    return `<polygon points="40,48 65,48 72,55 104,55 104,87 40,87" fill="${color}"/><rect x="46" y="62" width="52" height="19" rx="2" fill="${background}"/>`;
+  if (shortcut === "side-chat")
+    return `<polygon points="40,43 89,43 89,75 60,75 46,86 46,75 40,75" fill="${color}"/><polygon points="70,57 104,57 104,83 91,83 79,92 79,83 70,83" fill="${color}"/><rect x="75" y="62" width="24" height="16" rx="2" fill="${background}"/>`;
+  return `<rect x="41" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="74" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="47" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="47" y="63" width="12" height="4" rx="2" fill="${background}"/><rect x="80" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="80" y="63" width="12" height="4" rx="2" fill="${background}"/>`;
+}
+
+export function renderShortcutKey(
+  current: ShortcutChoice,
+  next: ShortcutChoice | undefined,
+  choiceCount: number,
+  style?: KeyStyle,
+  borderColor?: string,
+  display: DisplayOptions & { shortcutFontSize?: number } = {},
+): string {
+  const showTitle = display.showTitle !== false;
+  const showNext = display.showNext !== false;
+  const accent = style?.borderColor ?? COLORS.shortcut;
+  const font = style?.fontColor ?? "#ffffff";
+  const background = style?.backgroundColor ?? "#101319";
+  const labelSize = fontSize(display.shortcutFontSize, 18);
+  const labelY = showNext ? 95 : 115;
+  const iconOffset = showTitle ? 0 : 7;
+  const headerMarkup = showTitle
+    ? `<text x="72" y="${alphabeticBaseline(20, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.2">SHORTCUT</text>`
+    : "";
+  const footerMarkup = showNext
+    ? `<line x1="20" y1="107" x2="124" y2="107" stroke="${accent}" stroke-width="2" opacity="0.55"/>
+		<text x="72" y="${alphabeticBaseline(123, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(choiceCount > 1 && next ? `NEXT  ${next.label.toUpperCase()}`.slice(0, 28) : "OPEN CODEX")}</text>
+		<circle cx="72" cy="134" r="3" fill="${accent}"/>`
+    : "";
+  return svg(
+    `
+		${headerMarkup}
+		<g transform="translate(0 ${iconOffset})">${shortcutIcon(current.shortcut, font, background)}</g>
+		<text x="72" y="${alphabeticBaseline(labelY + iconOffset, labelSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${labelSize}" font-weight="800">${escapeXml(current.label.toUpperCase().slice(0, 18))}</text>
 		${footerMarkup}
 	`,
     borderColor ?? accent,
@@ -244,10 +300,13 @@ export function renderError(
       ? "SELECT TASK"
       : code === "task-state-unavailable"
         ? "TASK UNREADY"
-        : message.includes("choice")
+        : message.includes("choice") ||
+            (kind === "shortcut" && message.includes("shortcut"))
           ? "CHECK SETTINGS"
           : context === "update"
-            ? "UPDATE FAILED"
+            ? kind === "shortcut"
+              ? "OPEN FAILED"
+              : "UPDATE FAILED"
             : "CODEX OFFLINE";
   const showKind = display.showTitle !== false;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
