@@ -4,6 +4,8 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+## 0.1.0 - 2026-08-29
+
 - Prepare the plug-in information, artwork, screenshots, support text, and
   release process for publication.
 - Add Model, Thinking, and Preset controls.

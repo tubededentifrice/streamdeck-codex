@@ -76,9 +76,6 @@ status and the retest procedure.
 
 Open the released `.streamDeckPlugin` file. Stream Deck installs the plug-in.
 
-No public release package is available yet. The plug-in is still in active
-development.
-
 ## Development
 
 Install the dependencies:

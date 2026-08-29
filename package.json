@@ -25,7 +25,7 @@
     "lint": "eslint .",
     "package:plugin": "node scripts/package-plugin.mjs",
     "smoke:codex": "CODEX_LIVE_TEST=1 vitest run tests/live-codex.test.ts",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1",
     "typecheck": "tsc --noEmit",
     "validate": "streamdeck validate com.courcelle.codex-controls.sdPlugin --no-update-check",
     "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.courcelle.codex-controls\""

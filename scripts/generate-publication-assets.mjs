@@ -294,6 +294,7 @@ function maskPluginLogo() {
       "-compose",
       "DstIn",
       "-composite",
+      "-strip",
       masked,
     ],
     { stdio: "inherit" },
@@ -393,7 +394,15 @@ function writeSvg(name, content) {
 function renderPng(source, output, width, height) {
   const args = ["-background", "none"];
   if (font) args.push("-font", font);
-  args.push(source, "-resize", `${width}x${height}!`, "-depth", "8", output);
+  args.push(
+    source,
+    "-resize",
+    `${width}x${height}!`,
+    "-depth",
+    "8",
+    "-strip",
+    output,
+  );
   execFileSync("magick", args, { stdio: "inherit" });
 }
 
