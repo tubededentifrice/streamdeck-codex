@@ -44,6 +44,11 @@ describe("ChatGPT labels", () => {
     ).toBeUndefined();
   });
 
+  it("uses keyboard input, because ChatGPT can hide AXPress", () => {
+    expect(CHATGPT_ACTION).not.toMatch(/\bpress\(/);
+    expect(CHATGPT_ACTION).toContain("activate(button, KEY_SPACE)");
+  });
+
   it("injects self-contained label functions into the watcher script", () => {
     expect(CHATGPT_ACTION).toContain("const parseChatGPTLabel = function");
     expect(FRONT_APP_SCRIPT).toContain(CHATGPT_ACTION);

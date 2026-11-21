@@ -99,11 +99,16 @@ as T3 Code.
 - The key matches model identifiers such as `gpt-6.2-sol` with the names on the
   ChatGPT model button, such as "GPT-6.2 Sol", through the Codex model list in
   `~/.codex/models_cache.json`.
-- ChatGPT sets the thinking level with a power slider. The key moves the slider
-  with the arrow keys, also when ChatGPT is in the background.
-- A model change uses the ChatGPT model list. If ChatGPT shows no model list,
-  such as with a custom model provider, only the thinking level can change.
-  ChatGPT then shows "Custom" as the model of a new chat.
+- ChatGPT does not always expose Accessibility actions on its model picker.
+  The key gives the keyboard focus to a picker item and sends a key to ChatGPT:
+  Space, Return, Escape, or an arrow key. This also works when ChatGPT is in
+  the background, after its window had the focus once.
+- A model change uses the ChatGPT model list.
+- With a custom model provider that has a `model_catalog_url`, ChatGPT can turn
+  off the `api_key_model_discovery` feature of its Codex App Server. The model
+  list is then empty, and a new chat shows "Custom" as its model. Add
+  `api_key_model_discovery = true` to `[features]` in `~/.codex/config.toml` on
+  this Mac and on each remote host, then restart ChatGPT.
 - Shortcut keys use the standard ChatGPT keyboard commands. These commands are
   the same as in Codex desktop.
 
