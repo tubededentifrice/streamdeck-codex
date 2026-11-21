@@ -1,13 +1,7 @@
 // These functions are also injected into the JXA composer action with
 // Function.prototype.toString, so each one must stay self-contained.
 
-/** Compares model names: "GPT-6.2-Sol" and "gpt-6.2-sol" give "gpt-6-2-sol". */
-export function normalizeLabel(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+export { normalizeLabel } from "../apps/labels";
 
 /** Converts a T3 Code thinking label, such as "Extra High", to its value. */
 export function effortFromLabel(label: string): string {

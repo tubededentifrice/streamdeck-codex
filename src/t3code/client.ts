@@ -122,7 +122,7 @@ export class T3CodeClient {
 
   async readState(): Promise<CodexState> {
     const route = this.#selectedRoute();
-    const description = this.#watcher.snapshot.t3Composer;
+    const description = this.#watcher.snapshot.t3code.composer;
     if (!description)
       throw error("resolving-task", "T3 Code shows no model button.");
     return stateFrom(route, description, this.#names);
@@ -141,11 +141,13 @@ export class T3CodeClient {
       hostIdFor(route) !== expectedHostId
     )
       throw new Error("The selected task changed before the update.");
+    const page = this.#watcher.snapshot.t3code;
     const description = await this.#run({
+      app: "t3code",
+      composer: page.index,
       effort,
       model,
-      composer: this.#watcher.snapshot.t3ComposerIndex,
-      url: this.#watcher.snapshot.t3Url,
+      route: page.route,
     });
     const deadline = Date.now() + VERIFY_TIMEOUT;
     let state = description
@@ -163,7 +165,7 @@ export class T3CodeClient {
           "T3 Code did not show the requested model and thinking level.",
         );
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const current = this.#watcher.snapshot.t3Composer;
+      const current = this.#watcher.snapshot.t3code.composer;
       state = current ? stateFrom(route, current, this.#names) : undefined;
     }
     for (const listener of this.#listeners) listener();
@@ -179,15 +181,16 @@ export class T3CodeClient {
         "accessibility",
         "Allow Stream Deck in macOS Accessibility settings to follow T3 Code.",
       );
-    const route = parseT3Route(snapshot.t3Url);
+    const route = parseT3Route(snapshot.t3code.route);
     if (!route) throw error("resolving-task", "Open a T3 Code thread.");
     return route;
   }
 
   #syncRoute(): void {
-    const route = parseT3Route(this.#watcher.snapshot.t3Url);
+    const page = this.#watcher.snapshot.t3code;
+    const route = parseT3Route(page.route);
     const key = route
-      ? `${hostIdFor(route)}\0${route.threadId}\0${this.#watcher.snapshot.t3ComposerIndex}`
+      ? `${hostIdFor(route)}\0${route.threadId}\0${page.index}`
       : undefined;
     if (key === this.#routeKey) return;
     this.#routeKey = key;

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { FrontAppSnapshot } from "../src/apps/front-app-watcher";
+import type {
+  ComposerPage,
+  FrontAppSnapshot,
+} from "../src/apps/front-app-watcher";
 import { CodexError } from "../src/codex/errors";
 import { parseT3Route, T3CodeClient } from "../src/t3code/client";
 
@@ -18,26 +21,38 @@ function makeClient(
   return new T3CodeClient(view, run, names);
 }
 
-function watcher(snapshot: Partial<FrontAppSnapshot> = {}) {
+type Fields = Partial<
+  Pick<FrontAppSnapshot, "accessibility" | "started"> & ComposerPage
+>;
+
+function snapshotFrom(fields: Fields, base?: FrontAppSnapshot) {
+  const page = base?.t3code ?? {
+    composer: "GPT-6.2-Sol, High · Standard",
+    index: 0,
+    route: `t3code://app/#/draft/${DRAFT}`,
+  };
+  const { accessibility, started, ...pageFields } = fields;
+  return {
+    accessibility: accessibility ?? base?.accessibility ?? true,
+    app: "t3code",
+    chatgpt: { composer: undefined, index: 0, route: undefined },
+    started: started ?? base?.started ?? true,
+    t3code: { ...page, ...pageFields },
+  } as FrontAppSnapshot;
+}
+
+function watcher(fields: Fields = {}) {
   const listeners = new Set<() => void>();
   return {
-    emit(next: Partial<FrontAppSnapshot>) {
-      this.snapshot = { ...this.snapshot, ...next };
+    emit(next: Fields) {
+      this.snapshot = snapshotFrom(next, this.snapshot);
       for (const listener of listeners) listener();
     },
     onChange: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    snapshot: {
-      accessibility: true,
-      app: "t3code",
-      started: true,
-      t3Composer: "GPT-6.2-Sol, High · Standard",
-      t3ComposerIndex: 0,
-      t3Url: `t3code://app/#/draft/${DRAFT}`,
-      ...snapshot,
-    } as FrontAppSnapshot,
+    snapshot: snapshotFrom(fields),
   };
 }
 
@@ -78,8 +93,8 @@ describe("T3 Code client", () => {
   it("reads a thread in any environment", async () => {
     const client = makeClient(
       watcher({
-        t3Composer: "Claude Opus 5.5, Extra High",
-        t3Url: `t3code://app/#/18668344-277e-4848-8869-b4ef29ac4d09/${THREAD}`,
+        composer: "Claude Opus 5.5, Extra High",
+        route: `t3code://app/#/18668344-277e-4848-8869-b4ef29ac4d09/${THREAD}`,
       }),
       vi.fn(),
     );
@@ -95,8 +110,8 @@ describe("T3 Code client", () => {
   it.each([
     [{ started: false }, "resolving-task"],
     [{ accessibility: false }, "accessibility"],
-    [{ t3Url: "t3code://app/#/settings" }, "resolving-task"],
-    [{ t3Composer: undefined }, "resolving-task"],
+    [{ route: "t3code://app/#/settings" }, "resolving-task"],
+    [{ composer: undefined }, "resolving-task"],
   ] as const)("reports %o as %s", async (snapshot, code) => {
     const client = makeClient(watcher(snapshot), vi.fn());
 
@@ -119,10 +134,11 @@ describe("T3 Code client", () => {
     );
 
     expect(run).toHaveBeenCalledWith({
+      app: "t3code",
       composer: 0,
       effort: "medium",
       model: "claude-opus-5-5",
-      url: `t3code://app/#/draft/${DRAFT}`,
+      route: `t3code://app/#/draft/${DRAFT}`,
     });
     expect(state).toMatchObject({ effort: "medium", model: "Claude Opus 5.5" });
     expect(listener).toHaveBeenCalled();
@@ -131,7 +147,7 @@ describe("T3 Code client", () => {
   it("waits for the model button to show the change", async () => {
     const view = watcher();
     const run = vi.fn(async () => {
-      setTimeout(() => view.emit({ t3Composer: "GPT-6.2-Sol, Low" }), 150);
+      setTimeout(() => view.emit({ composer: "GPT-6.2-Sol, Low" }), 150);
       return "GPT-6.2-Sol, High";
     });
     const client = makeClient(view, run);
@@ -168,7 +184,7 @@ describe("T3 Code client", () => {
     const run = vi.fn(async () => "GPT-6.2-Sol, Low");
     const client = makeClient(view, run);
     const revision = client.routeRevision;
-    view.emit({ t3Url: `t3code://app/#/${ENV}/${THREAD}` });
+    view.emit({ route: `t3code://app/#/${ENV}/${THREAD}` });
 
     expect(client.routeRevision).toBe(revision + 1);
     await expect(
@@ -192,7 +208,7 @@ describe("T3 Code client", () => {
 
   it("reports the model id that T3 Code uses for the picker name", async () => {
     const client = makeClient(
-      watcher({ t3Composer: "Claude Opus 5.5, High" }),
+      watcher({ composer: "Claude Opus 5.5, High" }),
       vi.fn(),
       {
         idFor: (name) =>
@@ -210,7 +226,7 @@ describe("T3 Code client", () => {
     const state = await client.readState();
     const revision = client.routeRevision;
 
-    view.emit({ t3Composer: "Claude Opus 5.5, High", t3ComposerIndex: 1 });
+    view.emit({ composer: "Claude Opus 5.5, High", index: 1 });
 
     expect(client.routeRevision).toBe(revision + 1);
     await client.update("gpt-6.2-sol", "low", state.threadId, state.hostId);

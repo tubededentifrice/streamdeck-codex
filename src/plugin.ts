@@ -33,20 +33,3 @@ frontAppWatcher.onChange(() => {
 catalogSync.start();
 codexController.start();
 shortcutController.start();
-// TEMP PROBE
-import { execFile as probeExec } from "node:child_process";
-let probeLast = "";
-frontAppWatcher.onChange(() => {
-  const s = frontAppWatcher.snapshot;
-  const line = `PROBE snapshot index=${s.t3ComposerIndex} composer=${s.t3Composer}`;
-  if (line !== probeLast) { probeLast = line; streamDeck.logger.info(line); }
-});
-let probeTree = "";
-setInterval(() => {
-  probeExec("/usr/bin/osascript", ["-l", "JavaScript", "/private/tmp/claude-501/-Volumes-External-git-streamdeck-codex/7364f001-42e7-47ef-974c-5f6c567badf8/scratchpad/side.js"], (error, stdout) => {
-    const text = error ? String(error) : stdout;
-    if (text.replace(/ms=\d+/, "") === probeTree) return;
-    probeTree = text.replace(/ms=\d+/, "");
-    streamDeck.logger.info("PROBE tree\n" + text);
-  });
-}, 3000);

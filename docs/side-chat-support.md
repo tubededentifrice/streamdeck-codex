@@ -59,3 +59,10 @@ least once each quarter.
 Enable independent side-chat control only when all checks pass. Record the new
 Codex desktop version, date, event names, update method, and results in this
 file.
+
+## ChatGPT for macOS
+
+ChatGPT for macOS has no Codex desktop IPC. Each ChatGPT side chat has its own
+composer and model button in the window. The keys follow the message field
+that had the focus last and change that composer directly. The checks above
+apply only to Codex desktop.

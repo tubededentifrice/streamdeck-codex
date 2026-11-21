@@ -26,10 +26,16 @@
   only the local T3 Code window through macOS Accessibility: read the window
   address and the composer model button, and change values through the model
   picker. Do not connect to T3 Code servers.
+- Support ChatGPT for macOS, which replaces Codex desktop with the same bundle
+  ID and has no Codex desktop IPC. Control new chats, remote chats, and side
+  chats through the local ChatGPT window with macOS Accessibility, in the same
+  way as T3 Code. Follow the last frontmost app: ChatGPT, Codex desktop, or T3
+  Code.
 - Store custom color presets in Stream Deck global plug-in settings. Keep the 16
   built-in presets immutable.
 - Treat a Codex desktop side chat as its parent task until the checks in
-  `docs/side-chat-support.md` prove independent control is safe.
+  `docs/side-chat-support.md` prove independent control is safe. A ChatGPT side
+  chat has its own composer, so the keys control it directly.
 
 ## Development
 

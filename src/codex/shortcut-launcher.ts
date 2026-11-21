@@ -155,7 +155,8 @@ export class ShortcutLauncher {
       app === "t3code"
         ? this.#t3Command(shortcut)
         : SHORTCUT_COMMANDS[shortcut];
-    const name = app === "t3code" ? "T3 Code" : "Codex";
+    const name =
+      app === "t3code" ? "T3 Code" : app === "chatgpt" ? "ChatGPT" : "Codex";
     if (!command)
       throw new Error(`The selected ${name} shortcut is not available.`);
     const bundle = app === "t3code" ? T3CODE_BUNDLE_ID : CODEX_BUNDLE_ID;

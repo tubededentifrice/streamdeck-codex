@@ -9,18 +9,26 @@ import { FRONT_APP_SCRIPT } from "./front-app-script";
 export const CODEX_BUNDLE_ID = "com.openai.codex";
 export const T3CODE_BUNDLE_ID = "com.t3tools.t3code";
 
-export type AgentApp = "codex" | "t3code";
+export type AgentApp = "chatgpt" | "codex" | "t3code";
+/** An app whose composer the plug-in reads and changes through its window. */
+export type ComposerApp = "chatgpt" | "t3code";
+
+export type ComposerPage = Readonly<{
+  /** The model button label, such as "GPT-6.2-Sol, High · Standard". */
+  composer: string | undefined;
+  /** The composer that the keys follow: 0 for the thread, 1 for a side chat. */
+  index: number;
+  /** The open thread: the T3 Code page URL or the ChatGPT window title. */
+  route: string | undefined;
+}>;
 
 export type FrontAppSnapshot = Readonly<{
   /** The last frontmost supported app. Stream Deck does not take focus. */
   app: AgentApp | undefined;
   accessibility: boolean;
+  chatgpt: ComposerPage;
   started: boolean;
-  /** The description of the T3 Code model button, such as "GPT-6.2-Sol, High · Standard". */
-  t3Composer: string | undefined;
-  /** The composer that the keys follow: 0 for the thread, 1 for a side chat. */
-  t3ComposerIndex: number;
-  t3Url: string | undefined;
+  t3code: ComposerPage;
 }>;
 
 type Spawn = (
@@ -33,24 +41,54 @@ const RETRY_DELAY = 3000;
 const COMMAND_TIMEOUT = 15_000;
 
 export type ComposerRequest = Readonly<{
+  app: ComposerApp;
   effort: string;
   model: string;
-  /** The T3 Code page that the key saw. The command fails on another page. */
-  url: string | undefined;
+  /** The page that the key saw. The command fails on another page. */
+  route: string | undefined;
   /** The composer that the key saw. The command fails for another one. */
   composer: number;
 }>;
 
 type PendingCommand = {
+  app: ComposerApp;
   reject: (error: Error) => void;
   resolve: (description: string) => void;
   timer: ReturnType<typeof setTimeout>;
 };
 
-function appFor(bundleId: unknown): AgentApp | undefined {
-  if (bundleId === CODEX_BUNDLE_ID) return "codex";
-  if (bundleId === T3CODE_BUNDLE_ID) return "t3code";
-  return undefined;
+const EMPTY_PAGE: ComposerPage = {
+  composer: undefined,
+  index: 0,
+  route: undefined,
+};
+
+function appFor(value: unknown): AgentApp | undefined {
+  return value === "chatgpt" || value === "codex" || value === "t3code"
+    ? value
+    : undefined;
+}
+
+function pageFrom(value: unknown): ComposerPage {
+  if (!value || typeof value !== "object") return EMPTY_PAGE;
+  const page = value as Record<string, unknown>;
+  return {
+    composer: typeof page.composer === "string" ? page.composer : undefined,
+    index: Number.isSafeInteger(page.index) ? (page.index as number) : 0,
+    route: typeof page.route === "string" ? page.route : undefined,
+  };
+}
+
+function samePage(left: ComposerPage, right: ComposerPage): boolean {
+  return (
+    left.composer === right.composer &&
+    left.index === right.index &&
+    left.route === right.route
+  );
+}
+
+function appName(app: ComposerApp): string {
+  return app === "chatgpt" ? "ChatGPT" : "T3 Code";
 }
 
 export class FrontAppWatcher {
@@ -64,10 +102,9 @@ export class FrontAppWatcher {
   #snapshot: FrontAppSnapshot = {
     accessibility: false,
     app: undefined,
+    chatgpt: EMPTY_PAGE,
     started: false,
-    t3Composer: undefined,
-    t3ComposerIndex: 0,
-    t3Url: undefined,
+    t3code: EMPTY_PAGE,
   };
   #stopped = true;
 
@@ -95,28 +132,29 @@ export class FrontAppWatcher {
     clearTimeout(this.#restartTimer);
     this.#child?.kill();
     this.#child = undefined;
-    this.#rejectPending("The T3 Code watcher stopped.");
+    this.#rejectPending("The app watcher stopped.");
     if (this.#commandDirectory)
       fs.rmSync(this.#commandDirectory, { force: true, recursive: true });
     this.#commandDirectory = undefined;
   }
 
   /**
-   * Sets the model and thinking level in the T3 Code composer. The watcher
-   * process runs the change, because it already knows the window and the model
-   * button. Resolves with the final model button description.
+   * Sets the model and thinking level in a T3 Code or ChatGPT composer. The
+   * watcher process runs the change, because it already knows the window and
+   * the model button. Resolves with the final model button label.
    */
   runComposer(request: ComposerRequest): Promise<string> {
     const directory = this.#commandDirectory;
+    const failure = `${appName(request.app)} did not apply the change.`;
     if (!this.#child || !directory)
-      return Promise.reject(new Error("The T3 Code watcher is not running."));
+      return Promise.reject(new Error("The app watcher is not running."));
     const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
-        reject(new Error("T3 Code did not apply the change."));
+        reject(new Error(failure));
       }, COMMAND_TIMEOUT);
-      this.#pending.set(id, { reject, resolve, timer });
+      this.#pending.set(id, { app: request.app, reject, resolve, timer });
       try {
         const file = path.join(directory, "command.json");
         const temporary = path.join(directory, `${id}.tmp`);
@@ -127,7 +165,7 @@ export class FrontAppWatcher {
       } catch {
         clearTimeout(timer);
         this.#pending.delete(id);
-        reject(new Error("T3 Code did not apply the change."));
+        reject(new Error(failure));
       }
     });
   }
@@ -147,49 +185,31 @@ export class FrontAppWatcher {
     }
     const message = value as {
       ax?: unknown;
-      composer?: unknown;
-      composerIndex?: unknown;
       front?: unknown;
+      page?: unknown;
       running?: unknown;
-      t3?: unknown;
     };
     const front = appFor(message.front);
     const running = Array.isArray(message.running)
       ? message.running.map(appFor).filter((app) => app !== undefined)
       : [];
     if (front) this.#lastFront = front;
+    const page = pageFrom(message.page);
+    const previous = this.#snapshot;
     const next: FrontAppSnapshot = {
       accessibility: message.ax === true,
       app: this.#lastFront ?? (running.length === 1 ? running[0] : undefined),
+      chatgpt: front === "chatgpt" ? page : previous.chatgpt,
       started: true,
-      t3Composer:
-        front === "t3code"
-          ? typeof message.composer === "string"
-            ? message.composer
-            : undefined
-          : this.#snapshot.t3Composer,
-      t3ComposerIndex:
-        front === "t3code"
-          ? Number.isSafeInteger(message.composerIndex)
-            ? (message.composerIndex as number)
-            : 0
-          : this.#snapshot.t3ComposerIndex,
-      t3Url:
-        front === "t3code"
-          ? typeof message.t3 === "string"
-            ? message.t3
-            : undefined
-          : this.#snapshot.t3Url,
+      t3code: front === "t3code" ? page : previous.t3code,
     };
-    const previous = this.#snapshot;
     this.#snapshot = next;
     if (
       previous.accessibility !== next.accessibility ||
       previous.app !== next.app ||
       previous.started !== next.started ||
-      previous.t3Composer !== next.t3Composer ||
-      previous.t3ComposerIndex !== next.t3ComposerIndex ||
-      previous.t3Url !== next.t3Url
+      !samePage(previous.chatgpt, next.chatgpt) ||
+      !samePage(previous.t3code, next.t3code)
     )
       for (const listener of this.#listeners) listener();
   }
@@ -206,18 +226,26 @@ export class FrontAppWatcher {
       return;
     }
     const text = typeof description === "string" ? description : "";
-    if (text && text !== this.#snapshot.t3Composer) {
-      this.#snapshot = { ...this.#snapshot, t3Composer: text };
+    const page = this.#snapshot[pending.app];
+    if (text && text !== page.composer) {
+      this.#snapshot = {
+        ...this.#snapshot,
+        [pending.app]: { ...page, composer: text },
+      };
       for (const listener of this.#listeners) listener();
     }
     pending.resolve(text);
   }
 
-  #rejectPending(message: string): void {
+  #rejectPending(message?: string): void {
     for (const [id, pending] of this.#pending) {
       clearTimeout(pending.timer);
       this.#pending.delete(id);
-      pending.reject(new Error(message));
+      pending.reject(
+        new Error(
+          message ?? `${appName(pending.app)} did not apply the change.`,
+        ),
+      );
     }
   }
 
@@ -256,7 +284,7 @@ export class FrontAppWatcher {
     child.on("exit", () => {
       if (this.#child !== child) return;
       this.#child = undefined;
-      this.#rejectPending("T3 Code did not apply the change.");
+      this.#rejectPending();
       this.#schedule(RETRY_DELAY);
     });
     child.stdin?.on("error", () => undefined);

@@ -1,14 +1,18 @@
+import { normalizeLabel } from "./labels";
+
 // Accessibility helpers shared by the JXA programs. The functions are bound
 // with `id` types, because the JXA bridge rejects AXUIElementRef values that
 // come back from an earlier call.
 export const AX_HELPERS = String.raw`
 ObjC.import("AppKit");
 ObjC.import("ApplicationServices");
+ObjC.import("CoreGraphics");
 ObjC.bindFunction("AXUIElementCreateApplication", ["id", ["int"]]);
 ObjC.bindFunction("AXUIElementCopyAttributeValue", ["int", ["id", "id", "id *"]]);
 ObjC.bindFunction("AXUIElementSetAttributeValue", ["int", ["id", "id", "id"]]);
 ObjC.bindFunction("AXUIElementPerformAction", ["int", ["id", "id"]]);
 const T3 = "com.t3tools.t3code";
+const CODEX = "com.openai.codex";
 function copy(element, name) {
   const ref = Ref();
   return $.AXUIElementCopyAttributeValue(element, $(name), ref) === 0 ? ref[0] : undefined;
@@ -35,18 +39,63 @@ function pause(seconds) {
 function press(element) {
   return $.AXUIElementPerformAction(element, $("AXPress")) === 0;
 }
-function t3Application() {
-  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(T3);
-  if (apps.count === 0) return undefined;
-  const pid = apps.objectAtIndex(0).processIdentifier;
-  return { element: $.AXUIElementCreateApplication(pid), pid };
+const normalizeLabel = ${normalizeLabel.toString()};
+function find(root, test) {
+  let found;
+  (function walk(element, depth) {
+    if (found || depth > 40) return;
+    if (test(element)) {
+      found = element;
+      return;
+    }
+    for (const child of children(element)) walk(child, depth + 1);
+  })(root, 0);
+  return found;
+}
+function findAll(root, test) {
+  const found = [];
+  (function walk(element, depth) {
+    if (depth > 40) return;
+    if (test(element)) found.push(element);
+    for (const child of children(element)) walk(child, depth + 1);
+  })(root, 0);
+  return found;
+}
+function waitFor(test, seconds) {
+  const end = Date.now() + seconds * 1000;
+  for (;;) {
+    if (test()) return true;
+    if (Date.now() >= end) return false;
+    pause(0.03);
+  }
+}
+// ChatGPT for macOS uses the bundle ID of the earlier Codex desktop app.
+function isChatGPT(app) {
+  const url = app.executableURL;
+  return !url.isNil() && url.lastPathComponent.js === "ChatGPT";
+}
+function appKey(app) {
+  if (app.isNil()) return null;
+  const bundle = app.bundleIdentifier.isNil() ? "" : app.bundleIdentifier.js;
+  if (bundle === T3) return "t3code";
+  if (bundle === CODEX) return isChatGPT(app) ? "chatgpt" : "codex";
+  return null;
+}
+function runningPid(key) {
+  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(key === "t3code" ? T3 : CODEX);
+  for (let index = 0; index < apps.count; index += 1) {
+    const app = apps.objectAtIndex(index);
+    if (appKey(app) === key) return app.processIdentifier;
+  }
+  return undefined;
 }
 function focusedWindow(application) {
   let window = copy(application, "AXFocusedWindow");
   if (window === undefined || window.isNil()) window = copy(application, "AXMainWindow");
   return window === undefined || window.isNil() ? undefined : window;
 }
-function findArea(window) {
+// The web page of the app window. A page URL starts with the prefix.
+function findArea(window, prefix) {
   const queue = [[window, 0]];
   let visited = 0;
   while (queue.length > 0 && visited < 600) {
@@ -54,18 +103,18 @@ function findArea(window) {
     visited += 1;
     if (string(element, "AXRole") === "AXWebArea") {
       const url = string(element, "AXURL");
-      if (url && url.startsWith("t3code:")) return element;
+      if (url && url.startsWith(prefix)) return element;
       continue;
     }
     if (depth < 12) for (const child of children(element)) queue.push([child, depth + 1]);
   }
   return undefined;
 }
-// Each composer is a message field and its model button: the first untitled
-// pop-up button with text after the field. A thread can show more than one
+// Each composer is a message field and its model button: the first pop-up
+// button after the field that passes isButton. A page can show more than one
 // composer, such as a side chat. Long lists, such as the messages of a thread,
 // are skipped except for their last items, so the walk stays short.
-function findComposers(root) {
+function findComposers(root, isButton) {
   const found = [];
   let text;
   let visited = 0;
@@ -74,12 +123,7 @@ function findComposers(root) {
     visited += 1;
     const role = string(element, "AXRole");
     if (role === "AXTextArea") text = element;
-    else if (
-      text !== undefined &&
-      role === "AXPopUpButton" &&
-      !string(element, "AXTitle") &&
-      children(element).some((child) => string(child, "AXRole") === "AXStaticText")
-    ) {
+    else if (text !== undefined && role === "AXPopUpButton" && isButton(element)) {
       found.push({ button: element, text });
       text = undefined;
       return;
