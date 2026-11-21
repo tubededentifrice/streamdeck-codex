@@ -6,7 +6,7 @@ to report a problem or request a feature.
 ## Before you report a problem
 
 1. Confirm that Codex desktop or T3 Code is open.
-2. Select a normal Codex task or a sent T3 Code thread. A side chat uses its
+2. Select a normal Codex task or a T3 Code thread. A side chat uses its
    parent task.
 3. Confirm that Stream Deck is version 7.1 or later.
 4. Restart the Codex Controls plug-in.
@@ -27,8 +27,6 @@ Codex Controls has no analytics and no advertising. It reads next-turn settings
 for local and remote tasks. It changes these settings for local tasks. It does
 not send task content to the plug-in author.
 
-For T3 Code, the plug-in reads the address of the T3 Code window through macOS
-Accessibility. It reads and changes the thread model through the local T3 Code
-server. It keeps two local T3 Code session tokens in
-`~/Library/Application Support/com.courcelle.codex-controls/` with access for
-the current user only.
+For T3 Code, the plug-in reads the T3 Code window address and model button
+through macOS Accessibility. It changes the model through the T3 Code model
+picker. It does not connect to a T3 Code server and stores no T3 Code data.

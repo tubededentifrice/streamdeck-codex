@@ -78,25 +78,23 @@ The keys also control T3 Code. The keys follow the last app that you brought to
 the front: Codex desktop or T3 Code.
 
 - Model, Thinking, and Preset keys read and change the model and thinking level
-  of the open T3 Code thread. A change applies to the next turn of the thread.
-- Model and Preset keys change the model within the provider of the thread,
-  for example Codex or Claude. Use the model identifiers that T3 Code shows,
-  such as `gpt-6.2-sol` or `claude-opus-5-5`.
+  in the composer of the open T3 Code thread. This includes a new thread that
+  you did not send yet, and a thread in a linked or remote environment.
+- A change applies to the next message of the thread.
+- Use model identifiers such as `gpt-6.2-sol` or `claude-opus-5-5`. The key
+  matches them with the names in the T3 Code model picker, such as
+  "GPT-6.2-Sol" or "Claude Opus 5.5".
 - Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
   use your T3 Code key bindings. T3 Code has no side chat.
-- The keys control threads in the local T3 Code environment only. A thread in a
-  linked environment shows **LOCAL ONLY**. A new thread that you did not send
-  shows **NOT IN ACTIVE CHAT**.
 
-T3 Code does not tell other apps which thread is open. The plug-in reads the
-address of the T3 Code window through macOS Accessibility. Allow Stream Deck in
+The plug-in uses only the T3 Code window on this Mac. It reads the model button
+of the composer and selects items in the model picker through macOS
+Accessibility. It does not connect to a T3 Code server. Allow Stream Deck in
 **System Settings > Privacy & Security > Accessibility**. Without this
 permission, the keys show **ALLOW ACCESS**.
 
-At the first use, the plug-in runs `~/.t3/bin/t3 auth session issue` to create
-two local T3 Code sessions with the label "Stream Deck". It keeps them in
-`~/Library/Application Support/com.courcelle.codex-controls/` and renews them
-before they expire. You can revoke them with `t3 auth session revoke`.
+A key press opens the T3 Code model picker for about one second. A T3 Code
+update that changes the composer can require a plug-in update.
 
 ## Install a release
 

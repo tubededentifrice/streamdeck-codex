@@ -1,6 +1,6 @@
 import type { CodexDesktopClient } from "../codex/desktop-client";
 import type { CodexState } from "../domain/settings";
-import { T3CODE_HOST_ID, type T3CodeClient } from "../t3code/client";
+import { isT3HostId, type T3CodeClient } from "../t3code/client";
 import type { AgentApp, FrontAppWatcher } from "./front-app-watcher";
 
 type CodexClient = Pick<
@@ -72,7 +72,7 @@ export class AgentClient {
     expectedThreadId: string,
     expectedHostId: string,
   ): Promise<CodexState> {
-    return expectedHostId === T3CODE_HOST_ID
+    return isT3HostId(expectedHostId)
       ? this.#t3.update(model, effort, expectedThreadId, expectedHostId)
       : this.#codex.update(model, effort, expectedThreadId, expectedHostId);
   }

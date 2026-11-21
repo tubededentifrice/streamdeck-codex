@@ -1,6 +1,10 @@
 import type { JsonObject } from "@elgato/utils";
 
-import type { CodexState, SettingsActionKind } from "./settings";
+import {
+  type CodexState,
+  matchesChoice,
+  type SettingsActionKind,
+} from "./settings";
 
 export type KeyStyle = Readonly<{
   backgroundColor: string;
@@ -144,11 +148,9 @@ export function activeStyleFor(
         ? settings.thinking
         : settings.presets;
 
-  const activeChoice = choices?.find((choice) => {
-    if (kind === "model") return choice.model === state.model;
-    if (kind === "thinking") return choice.effort === state.effort;
-    return choice.model === state.model && choice.effort === state.effort;
-  });
+  const activeChoice = choices?.find((choice) =>
+    matchesChoice(kind, choice, state),
+  );
 
   return resolveStyleById(activeChoice?.styleId, globalSettings);
 }

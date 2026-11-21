@@ -409,11 +409,6 @@ describe("key renderer", () => {
       "ALLOW ACCESS",
     ],
     [
-      new CodexError("remote-task", "Private.", { app: "t3code" }),
-      "refresh",
-      "LOCAL ONLY",
-    ],
-    [
       new CodexError("offline", "Private.", { app: "t3code" }),
       "refresh",
       "T3 OFFLINE",

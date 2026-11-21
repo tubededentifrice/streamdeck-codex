@@ -12,7 +12,7 @@ const CODEX: CodexState = {
 };
 const T3: CodexState = {
   effort: "high",
-  hostId: "t3code",
+  hostId: "t3code:draft",
   model: "claude-opus-5-5",
   threadId: "ec79e37d-c4ad-48c2-b7fd-94b46f3c6671",
 };
@@ -70,14 +70,14 @@ describe("agent client", () => {
     const t3 = client(T3);
     const agent = new AgentClient(codex, t3, watcher("codex"));
 
-    await agent.update("claude-opus-5-5", "high", T3.threadId, "t3code");
+    await agent.update("claude-opus-5-5", "high", T3.threadId, "t3code:draft");
     await agent.update("gpt-5.6-sol", "high", CODEX.threadId, "local");
 
     expect(t3.update).toHaveBeenCalledWith(
       "claude-opus-5-5",
       "high",
       T3.threadId,
-      "t3code",
+      "t3code:draft",
     );
     expect(codex.update).toHaveBeenCalledWith(
       "gpt-5.6-sol",

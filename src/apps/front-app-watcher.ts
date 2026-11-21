@@ -12,6 +12,8 @@ export type FrontAppSnapshot = Readonly<{
   app: AgentApp | undefined;
   accessibility: boolean;
   started: boolean;
+  /** The description of the T3 Code model button, such as "GPT-6.2-Sol, High · Standard". */
+  t3Composer: string | undefined;
   t3Url: string | undefined;
 }>;
 
@@ -39,6 +41,7 @@ export class FrontAppWatcher {
     accessibility: false,
     app: undefined,
     started: false,
+    t3Composer: undefined,
     t3Url: undefined,
   };
   #stopped = true;
@@ -80,6 +83,7 @@ export class FrontAppWatcher {
     if (!value || typeof value !== "object") return;
     const message = value as {
       ax?: unknown;
+      composer?: unknown;
       front?: unknown;
       running?: unknown;
       t3?: unknown;
@@ -93,6 +97,12 @@ export class FrontAppWatcher {
       accessibility: message.ax === true,
       app: this.#lastFront ?? (running.length === 1 ? running[0] : undefined),
       started: true,
+      t3Composer:
+        front === "t3code"
+          ? typeof message.composer === "string"
+            ? message.composer
+            : undefined
+          : this.#snapshot.t3Composer,
       t3Url:
         front === "t3code"
           ? typeof message.t3 === "string"
@@ -106,6 +116,7 @@ export class FrontAppWatcher {
       previous.accessibility !== next.accessibility ||
       previous.app !== next.app ||
       previous.started !== next.started ||
+      previous.t3Composer !== next.t3Composer ||
       previous.t3Url !== next.t3Url
     )
       for (const listener of this.#listeners) listener();

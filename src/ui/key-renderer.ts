@@ -337,24 +337,22 @@ export function renderError(
   const short =
     code === "accessibility"
       ? "ALLOW ACCESS"
-      : code === "remote-task"
-        ? "LOCAL ONLY"
-        : code === "select-task" || message.includes("Select a task")
-          ? "SELECT TASK"
-          : code === "task-state-unavailable"
-            ? "TASK UNREADY"
-            : kind === "shortcut" && message.includes("not available")
-              ? "UNAVAILABLE"
-              : message.includes("choice") ||
-                  (kind === "shortcut" && message.includes("shortcut"))
-                ? "CHECK SETTINGS"
-                : context === "update" && code !== "offline"
-                  ? kind === "shortcut"
-                    ? "OPEN FAILED"
-                    : "UPDATE FAILED"
-                  : app === "t3code"
-                    ? "T3 OFFLINE"
-                    : "CODEX OFFLINE";
+      : code === "select-task" || message.includes("Select a task")
+        ? "SELECT TASK"
+        : code === "task-state-unavailable"
+          ? "TASK UNREADY"
+          : kind === "shortcut" && message.includes("not available")
+            ? "UNAVAILABLE"
+            : message.includes("choice") ||
+                (kind === "shortcut" && message.includes("shortcut"))
+              ? "CHECK SETTINGS"
+              : context === "update" && code !== "offline"
+                ? kind === "shortcut"
+                  ? "OPEN FAILED"
+                  : "UPDATE FAILED"
+                : app === "t3code"
+                  ? "T3 OFFLINE"
+                  : "CODEX OFFLINE";
   const showKind = display.showTitle !== false;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
   const kindMarkup = showKind

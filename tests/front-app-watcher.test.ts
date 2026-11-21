@@ -19,11 +19,20 @@ describe("front app watcher", () => {
     const listener = vi.fn();
     watcher.onChange(listener);
 
-    watcher.apply(line({ ax: true, front: T3, running: [CODEX, T3], t3: URL }));
+    watcher.apply(
+      line({
+        ax: true,
+        composer: "GPT-6.2-Sol, High",
+        front: T3,
+        running: [CODEX, T3],
+        t3: URL,
+      }),
+    );
     expect(watcher.snapshot).toEqual({
       accessibility: true,
       app: "t3code",
       started: true,
+      t3Composer: "GPT-6.2-Sol, High",
       t3Url: URL,
     });
 

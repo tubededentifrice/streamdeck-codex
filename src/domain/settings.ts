@@ -228,6 +228,37 @@ export function choicesFor(
   return uniqueBy(choices, (choice) => `${choice.model}\0${choice.effort}`);
 }
 
+function comparable(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** Matches a model id with an app label: "gpt-6.2-sol" and "GPT-6.2-Sol". */
+export function sameModel(a: string, b: string): boolean {
+  return comparable(a) === comparable(b);
+}
+
+export function sameEffort(a: string, b: string): boolean {
+  return comparable(a) === comparable(b);
+}
+
+export function matchesChoice(
+  kind: SettingsActionKind,
+  choice: { effort?: unknown; model?: unknown },
+  state: Pick<CodexState, "effort" | "model">,
+): boolean {
+  const model =
+    typeof choice.model === "string" && sameModel(choice.model, state.model);
+  const effort =
+    typeof choice.effort === "string" &&
+    sameEffort(choice.effort, state.effort);
+  if (kind === "model") return model;
+  if (kind === "thinking") return effort;
+  return model && effort;
+}
+
 export function nextChoice(
   kind: "model",
   settings: ActionSettings,
@@ -251,13 +282,9 @@ export function nextChoice(
   const choices = choicesFor(kind as "preset", settings);
   if (choices.length === 0) return undefined;
 
-  const index = choices.findIndex((choice) => {
-    if (kind === "model") return (choice as ModelChoice).model === state.model;
-    if (kind === "thinking")
-      return (choice as ThinkingChoice).effort === state.effort;
-    const preset = choice as PresetChoice;
-    return preset.model === state.model && preset.effort === state.effort;
-  });
+  const index = choices.findIndex((choice) =>
+    matchesChoice(kind, choice, state),
+  );
 
   if (choices.length === 1 || index < 0) return choices[0];
   return choices[(index + 1) % choices.length];
@@ -269,16 +296,10 @@ export function displayChoice(
   state: CodexState,
 ): ModelChoice | ThinkingChoice | PresetChoice | undefined {
   const choices = choicesFor(kind as "preset", settings);
-  const exact = choices.find((choice) => {
-    if (kind === "model") return (choice as ModelChoice).model === state.model;
-    if (kind === "thinking")
-      return (choice as ThinkingChoice).effort === state.effort;
-    const preset = choice as PresetChoice;
-    return preset.model === state.model && preset.effort === state.effort;
-  });
+  const exact = choices.find((choice) => matchesChoice(kind, choice, state));
   if (exact || kind !== "preset") return exact;
-  return choices.find(
-    (choice) => (choice as PresetChoice).model === state.model,
+  return choices.find((choice) =>
+    sameModel((choice as PresetChoice).model, state.model),
   );
 }
 

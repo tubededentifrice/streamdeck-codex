@@ -3,7 +3,6 @@ import type { AgentApp } from "../apps/front-app-watcher";
 export type CodexErrorCode =
   | "accessibility"
   | "offline"
-  | "remote-task"
   | "resolving-task"
   | "select-task"
   | "task-state-unavailable";
