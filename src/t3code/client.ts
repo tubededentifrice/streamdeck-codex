@@ -1,9 +1,6 @@
-import { execFile } from "node:child_process";
-
 import type { FrontAppWatcher } from "../apps/front-app-watcher";
 import { CodexError } from "../codex/errors";
 import { sameEffort, sameModel, type CodexState } from "../domain/settings";
-import { COMPOSER_SCRIPT } from "./composer-script";
 import { effortFromLabel, parseComposerLabel } from "./labels";
 import { T3ModelNames } from "./model-names";
 
@@ -13,10 +10,7 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9_:.-]{7,159}$/;
 const VERIFY_TIMEOUT = 3000;
 
 type Watcher = Pick<FrontAppWatcher, "onChange" | "snapshot">;
-export type ComposerRunner = (request: {
-  effort: string;
-  model: string;
-}) => Promise<string>;
+export type ComposerRunner = FrontAppWatcher["runComposer"];
 
 /** A sent thread has an environment. An unsent draft has none. */
 export type T3Route = Readonly<{
@@ -86,33 +80,6 @@ function error(
   return new CodexError(code, message, { app: "t3code" });
 }
 
-function runComposer(request: {
-  effort: string;
-  model: string;
-}): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      "/usr/bin/osascript",
-      ["-l", "JavaScript", "-", JSON.stringify(request)],
-      { timeout: 15000 },
-      (failure, stdout, stderr) => {
-        if (!failure) {
-          resolve(stdout.trim());
-          return;
-        }
-        const line = stderr.slice(stderr.lastIndexOf("error:") + 6);
-        const message = stderr.includes("error:")
-          ? line.split("\n")[0].replace(/ \(-?\d+\)$/, "")
-          : undefined;
-        reject(
-          new Error(message?.trim() || "T3 Code did not apply the change."),
-        );
-      },
-    );
-    child.stdin?.end(COMPOSER_SCRIPT);
-  });
-}
-
 /**
  * Reads and changes the model of the open T3 Code thread or draft through the
  * model button of its composer. The composer shows the next-turn value, also
@@ -127,8 +94,11 @@ export class T3CodeClient {
   #routeRevision = 0;
 
   constructor(
-    watcher: Watcher,
-    run: ComposerRunner = runComposer,
+    watcher: Watcher & Partial<Pick<FrontAppWatcher, "runComposer">>,
+    run: ComposerRunner = (request) =>
+      watcher.runComposer
+        ? watcher.runComposer(request)
+        : Promise.reject(new Error("T3 Code cannot apply the change.")),
     names: ModelNames = new T3ModelNames(),
   ) {
     this.#watcher = watcher;
@@ -171,7 +141,11 @@ export class T3CodeClient {
       hostIdFor(route) !== expectedHostId
     )
       throw new Error("The selected task changed before the update.");
-    const description = await this.#run({ effort, model });
+    const description = await this.#run({
+      effort,
+      model,
+      url: this.#watcher.snapshot.t3Url,
+    });
     const deadline = Date.now() + VERIFY_TIMEOUT;
     let state = description
       ? stateFrom(route, description, this.#names)

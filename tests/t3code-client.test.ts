@@ -120,6 +120,7 @@ describe("T3 Code client", () => {
     expect(run).toHaveBeenCalledWith({
       effort: "medium",
       model: "claude-opus-5-5",
+      url: `t3code://app/#/draft/${DRAFT}`,
     });
     expect(state).toMatchObject({ effort: "medium", model: "Claude Opus 5.5" });
     expect(listener).toHaveBeenCalled();

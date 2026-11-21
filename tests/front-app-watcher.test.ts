@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
@@ -106,6 +108,7 @@ describe("front app watcher", () => {
         "-l",
         "JavaScript",
         "-",
+        expect.stringContaining("codex-controls-"),
       ]);
       expect(watcher.snapshot.t3Url).toBe(URL);
 
@@ -118,5 +121,78 @@ describe("front app watcher", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("front app watcher commands", () => {
+  function started() {
+    const children: (EventEmitter & {
+      kill: ReturnType<typeof vi.fn>;
+      stderr: PassThrough;
+      stdin: PassThrough;
+      stdout: PassThrough;
+    })[] = [];
+    const args: string[][] = [];
+    const watcher = new FrontAppWatcher((_command, list) => {
+      args.push([...list]);
+      const child = Object.assign(new EventEmitter(), {
+        kill: vi.fn(),
+        stderr: new PassThrough(),
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+      });
+      children.push(child);
+      return child as never;
+    });
+    watcher.start();
+    return { args, children, watcher };
+  }
+
+  it("writes a private command file and resolves with the result", async () => {
+    const { args, children, watcher } = started();
+    const directory = args[0][3];
+    expect(fs.statSync(directory).mode & 0o777).toBe(0o700);
+
+    const result = watcher.runComposer({
+      effort: "high",
+      model: "gpt-6.2-sol",
+      url: URL,
+    });
+    const command = JSON.parse(
+      fs.readFileSync(path.join(directory, "command.json"), "utf8"),
+    );
+    expect(command).toMatchObject({
+      effort: "high",
+      model: "gpt-6.2-sol",
+      url: URL,
+    });
+
+    children[0].stdout.write(
+      `${line({ result: { description: "GPT-6.2-Sol, High", id: command.id } })}\n`,
+    );
+    await expect(result).resolves.toBe("GPT-6.2-Sol, High");
+    watcher.stop();
+    expect(fs.existsSync(directory)).toBe(false);
+  });
+
+  it("rejects with the error of the command", async () => {
+    const { args, children, watcher } = started();
+    const result = watcher.runComposer({ effort: "x", model: "m", url: URL });
+    const { id } = JSON.parse(
+      fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
+    );
+    children[0].stdout.write(
+      `${line({ result: { error: "T3 Code has no model m.", id } })}\n`,
+    );
+    await expect(result).rejects.toThrow("T3 Code has no model m.");
+    watcher.stop();
+  });
+
+  it("rejects a command when the watcher process ends", async () => {
+    const { children, watcher } = started();
+    const result = watcher.runComposer({ effort: "x", model: "m", url: URL });
+    children[0].emit("exit");
+    await expect(result).rejects.toThrow("T3 Code did not apply the change.");
+    watcher.stop();
   });
 });

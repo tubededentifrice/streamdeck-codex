@@ -1,4 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { FRONT_APP_SCRIPT } from "./front-app-script";
 
@@ -24,6 +28,20 @@ type Spawn = (
 
 const RESTART_INTERVAL = 30 * 60 * 1000;
 const RETRY_DELAY = 3000;
+const COMMAND_TIMEOUT = 15_000;
+
+export type ComposerRequest = Readonly<{
+  effort: string;
+  model: string;
+  /** The T3 Code page that the key saw. The command fails on another page. */
+  url: string | undefined;
+}>;
+
+type PendingCommand = {
+  reject: (error: Error) => void;
+  resolve: (description: string) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 function appFor(bundleId: unknown): AgentApp | undefined {
   if (bundleId === CODEX_BUNDLE_ID) return "codex";
@@ -33,7 +51,9 @@ function appFor(bundleId: unknown): AgentApp | undefined {
 
 export class FrontAppWatcher {
   readonly #listeners = new Set<() => void>();
+  readonly #pending = new Map<string, PendingCommand>();
   readonly #spawn: Spawn;
+  #commandDirectory: string | undefined;
   #child: ReturnType<Spawn> | undefined;
   #lastFront: AgentApp | undefined;
   #restartTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,6 +90,41 @@ export class FrontAppWatcher {
     clearTimeout(this.#restartTimer);
     this.#child?.kill();
     this.#child = undefined;
+    this.#rejectPending("The T3 Code watcher stopped.");
+    if (this.#commandDirectory)
+      fs.rmSync(this.#commandDirectory, { force: true, recursive: true });
+    this.#commandDirectory = undefined;
+  }
+
+  /**
+   * Sets the model and thinking level in the T3 Code composer. The watcher
+   * process runs the change, because it already knows the window and the model
+   * button. Resolves with the final model button description.
+   */
+  runComposer(request: ComposerRequest): Promise<string> {
+    const directory = this.#commandDirectory;
+    if (!this.#child || !directory)
+      return Promise.reject(new Error("The T3 Code watcher is not running."));
+    const id = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error("T3 Code did not apply the change."));
+      }, COMMAND_TIMEOUT);
+      this.#pending.set(id, { reject, resolve, timer });
+      try {
+        const file = path.join(directory, "command.json");
+        const temporary = path.join(directory, `${id}.tmp`);
+        fs.writeFileSync(temporary, JSON.stringify({ ...request, id }), {
+          mode: 0o600,
+        });
+        fs.renameSync(temporary, file);
+      } catch {
+        clearTimeout(timer);
+        this.#pending.delete(id);
+        reject(new Error("T3 Code did not apply the change."));
+      }
+    });
   }
 
   /** Applies one line from the watcher process. Exposed for tests. */
@@ -81,6 +136,10 @@ export class FrontAppWatcher {
       return;
     }
     if (!value || typeof value !== "object") return;
+    if ("result" in value) {
+      this.#settle((value as { result: unknown }).result);
+      return;
+    }
     const message = value as {
       ax?: unknown;
       composer?: unknown;
@@ -122,11 +181,46 @@ export class FrontAppWatcher {
       for (const listener of this.#listeners) listener();
   }
 
+  #settle(result: unknown): void {
+    if (!result || typeof result !== "object") return;
+    const { description, error, id } = result as Record<string, unknown>;
+    const pending = typeof id === "string" ? this.#pending.get(id) : undefined;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.#pending.delete(id as string);
+    if (typeof error === "string") {
+      pending.reject(new Error(error));
+      return;
+    }
+    const text = typeof description === "string" ? description : "";
+    if (text && text !== this.#snapshot.t3Composer) {
+      this.#snapshot = { ...this.#snapshot, t3Composer: text };
+      for (const listener of this.#listeners) listener();
+    }
+    pending.resolve(text);
+  }
+
+  #rejectPending(message: string): void {
+    for (const [id, pending] of this.#pending) {
+      clearTimeout(pending.timer);
+      this.#pending.delete(id);
+      pending.reject(new Error(message));
+    }
+  }
+
   #launch(): void {
     if (this.#stopped) return;
     let child: ReturnType<Spawn>;
     try {
-      child = this.#spawn("/usr/bin/osascript", ["-l", "JavaScript", "-"]);
+      this.#commandDirectory ??= fs.mkdtempSync(
+        path.join(os.tmpdir(), "codex-controls-"),
+      );
+      child = this.#spawn("/usr/bin/osascript", [
+        "-l",
+        "JavaScript",
+        "-",
+        this.#commandDirectory,
+      ]);
     } catch {
       this.#schedule(RETRY_DELAY);
       return;
@@ -149,6 +243,7 @@ export class FrontAppWatcher {
     child.on("exit", () => {
       if (this.#child !== child) return;
       this.#child = undefined;
+      this.#rejectPending("T3 Code did not apply the change.");
       this.#schedule(RETRY_DELAY);
     });
     child.stdin?.on("error", () => undefined);
@@ -160,6 +255,10 @@ export class FrontAppWatcher {
     clearTimeout(this.#restartTimer);
     if (this.#stopped) return;
     this.#restartTimer = setTimeout(() => {
+      if (this.#pending.size > 0 && this.#child) {
+        this.#schedule(1000);
+        return;
+      }
       const child = this.#child;
       this.#child = undefined;
       child?.kill();

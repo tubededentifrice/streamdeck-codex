@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { FRONT_APP_SCRIPT } from "../src/apps/front-app-script";
 import { sameEffort, sameModel } from "../src/domain/settings";
-import { COMPOSER_SCRIPT } from "../src/t3code/composer-script";
 import {
   effortFromLabel,
   normalizeLabel,
@@ -49,8 +48,8 @@ describe("T3 Code labels", () => {
   });
 
   it("builds JXA programs that parse", () => {
-    for (const script of [FRONT_APP_SCRIPT, COMPOSER_SCRIPT])
-      expect(() => new Function(script)).not.toThrow();
-    expect(COMPOSER_SCRIPT).toContain("const effortFromLabel = function");
+    expect(() => new Function(FRONT_APP_SCRIPT)).not.toThrow();
+    expect(FRONT_APP_SCRIPT).toContain("const effortFromLabel = function");
+    expect(FRONT_APP_SCRIPT).toContain("function applyComposer(");
   });
 });

@@ -105,7 +105,8 @@ Accessibility. It does not connect to a T3 Code server. Allow Stream Deck in
 **System Settings > Privacy & Security > Accessibility**. Without this
 permission, the keys show **ALLOW ACCESS**.
 
-A key press opens the T3 Code model picker for about one second. A T3 Code
+A key press opens the T3 Code model picker briefly and then returns the focus
+to where it was, such as the message field. A T3 Code
 update that changes the composer can require a plug-in update.
 
 ## Install a release
