@@ -26,7 +26,7 @@ not change a response that Codex is already generating.
 ## Requirements
 
 - macOS 12 or later.
-- Codex desktop.
+- Codex desktop or T3 Code.
 - Elgato Stream Deck 7.1 or later.
 - Node.js 24 for development.
 
@@ -71,6 +71,32 @@ settings while a side chat is open. It changes these settings for a local
 parent task. See
 [side-chat support](docs/side-chat-support.md) for the current compatibility
 status and the retest procedure.
+
+## T3 Code
+
+The keys also control T3 Code. The keys follow the last app that you brought to
+the front: Codex desktop or T3 Code.
+
+- Model, Thinking, and Preset keys read and change the model and thinking level
+  of the open T3 Code thread. A change applies to the next turn of the thread.
+- Model and Preset keys change the model within the provider of the thread,
+  for example Codex or Claude. Use the model identifiers that T3 Code shows,
+  such as `gpt-6.2-sol` or `claude-opus-5-5`.
+- Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
+  use your T3 Code key bindings. T3 Code has no side chat.
+- The keys control threads in the local T3 Code environment only. A thread in a
+  linked environment shows **LOCAL ONLY**. A new thread that you did not send
+  shows **NOT IN ACTIVE CHAT**.
+
+T3 Code does not tell other apps which thread is open. The plug-in reads the
+address of the T3 Code window through macOS Accessibility. Allow Stream Deck in
+**System Settings > Privacy & Security > Accessibility**. Without this
+permission, the keys show **ALLOW ACCESS**.
+
+At the first use, the plug-in runs `~/.t3/bin/t3 auth session issue` to create
+two local T3 Code sessions with the label "Stream Deck". It keeps them in
+`~/Library/Application Support/com.courcelle.codex-controls/` and renews them
+before they expire. You can revoke them with `t3 auth session revoke`.
 
 ## Install a release
 
@@ -123,7 +149,9 @@ ImageMagick and Chrome, Chromium, or Edge. See the
 The main code areas are:
 
 - `src/actions/` for Stream Deck actions.
-- `src/codex/` for Codex task access.
+- `src/apps/` for the frontmost-app watcher and the app router.
+- `src/codex/` for Codex task access and Shortcut keys.
+- `src/t3code/` for T3 Code thread access.
 - `src/domain/` for settings and color definitions.
 - `src/ui/` for key rendering.
 - `com.courcelle.codex-controls.sdPlugin/` for the manifest, property inspector,

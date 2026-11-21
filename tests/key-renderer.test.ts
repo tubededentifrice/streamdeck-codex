@@ -401,4 +401,43 @@ describe("key renderer", () => {
       ),
     ).toContain("UPDATE FAILED");
   });
+
+  it.each([
+    [
+      new CodexError("accessibility", "Private.", { app: "t3code" }),
+      "refresh",
+      "ALLOW ACCESS",
+    ],
+    [
+      new CodexError("remote-task", "Private.", { app: "t3code" }),
+      "refresh",
+      "LOCAL ONLY",
+    ],
+    [
+      new CodexError("offline", "Private.", { app: "t3code" }),
+      "refresh",
+      "T3 OFFLINE",
+    ],
+    [
+      new CodexError("offline", "Private.", { app: "t3code" }),
+      "update",
+      "T3 OFFLINE",
+    ],
+  ] as const)("labels the T3 Code %s error", (error, context, label) => {
+    const image = decodeURIComponent(renderError("model", error, context));
+    expect(image).toContain(label);
+    expect(image).not.toContain("Private.");
+  });
+
+  it("labels a shortcut that the app does not have", () => {
+    expect(
+      decodeURIComponent(
+        renderError(
+          "shortcut",
+          new Error("The selected T3 Code shortcut is not available."),
+          "update",
+        ),
+      ),
+    ).toContain("UNAVAILABLE");
+  });
 });

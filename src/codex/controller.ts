@@ -14,6 +14,10 @@ import {
 import { activeStyleFor } from "../domain/styles";
 import { renderError, renderKey, renderLoading } from "../ui/key-renderer";
 import { styleService } from "../ui/style-service";
+import { AgentClient } from "../apps/agent-client";
+import { frontAppWatcher } from "../apps/front-app-watcher";
+import { T3CodeClient } from "../t3code/client";
+import { T3CodeServer } from "../t3code/server";
 import { CodexDesktopClient } from "./desktop-client";
 import { CodexError, isResolvingTaskError } from "./errors";
 
@@ -52,13 +56,17 @@ export class CodexController {
     this.#styles = styles;
     this.#client =
       client ??
-      new CodexDesktopClient(undefined, (route) => {
-        void styles.saveLastRoute(route).catch(() => {
-          streamDeck.logger.error(
-            "Codex selected-task route could not be saved.",
-          );
-        });
-      });
+      new AgentClient(
+        new CodexDesktopClient(undefined, (route) => {
+          void styles.saveLastRoute(route).catch(() => {
+            streamDeck.logger.error(
+              "Codex selected-task route could not be saved.",
+            );
+          });
+        }),
+        new T3CodeClient(frontAppWatcher, new T3CodeServer()),
+        frontAppWatcher,
+      );
   }
 
   start(): void {

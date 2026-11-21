@@ -6,6 +6,7 @@ import {
   ShortcutAction,
   ThinkingAction,
 } from "./actions/codex-actions";
+import { frontAppWatcher } from "./apps/front-app-watcher";
 import { codexController } from "./codex/controller";
 import { shortcutController } from "./codex/shortcut-controller";
 import { styleService } from "./ui/style-service";
@@ -19,5 +20,14 @@ streamDeck.actions.registerAction(new ShortcutAction());
 
 await streamDeck.connect();
 await styleService.start();
+frontAppWatcher.start();
+let frontAppLog = "";
+frontAppWatcher.onChange(() => {
+  const { accessibility, app } = frontAppWatcher.snapshot;
+  const line = `Agent app: ${app ?? "none"}; Accessibility: ${accessibility ? "allowed" : "denied"}.`;
+  if (line === frontAppLog) return;
+  frontAppLog = line;
+  streamDeck.logger.info(line);
+});
 codexController.start();
 shortcutController.start();
