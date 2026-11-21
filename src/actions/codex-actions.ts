@@ -1,4 +1,4 @@
-import {
+import streamDeck, {
   action,
   type DidReceiveSettingsEvent,
   type KeyDownEvent,
@@ -10,6 +10,11 @@ import {
 import type { JsonValue } from "@elgato/utils";
 
 import { codexController } from "../codex/controller";
+import {
+  type CatalogAdditions,
+  catalogValuesOf,
+  mergeCatalog,
+} from "../domain/catalog";
 import { shortcutController } from "../codex/shortcut-controller";
 import {
   type ActionSettings,
@@ -19,6 +24,38 @@ import {
 } from "../domain/settings";
 import { BUILT_IN_STYLES } from "../domain/styles";
 import { styleService } from "../ui/style-service";
+import { catalogSync, logLinked } from "./catalog-sync";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function additionsFrom(payload: Record<string, unknown>): CatalogAdditions {
+  const list = (value: unknown) =>
+    Array.isArray(value) ? value.filter(isRecord) : [];
+  return {
+    efforts: list(payload.efforts).flatMap((item) =>
+      typeof item.effort === "string"
+        ? [
+            {
+              effort: item.effort,
+              label: typeof item.label === "string" ? item.label : undefined,
+            },
+          ]
+        : [],
+    ),
+    models: list(payload.models).flatMap((item) =>
+      typeof item.model === "string"
+        ? [
+            {
+              label: typeof item.label === "string" ? item.label : undefined,
+              model: item.model,
+            },
+          ]
+        : [],
+    ),
+  };
+}
 
 abstract class CodexAction extends SingletonAction<ActionSettings> {
   abstract readonly kind: SettingsActionKind;
@@ -27,13 +64,21 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
     event: WillAppearEvent<ActionSettings>,
   ): Promise<void> {
     if (!event.action.isKey()) return;
-    const settings = this.#withDefaults(event.payload.settings);
+    const defaults = this.#withDefaults(event.payload.settings);
+    const settings =
+      mergeCatalog(this.kind, defaults, styleService.catalog) ?? defaults;
+    logLinked(this.kind, defaults, settings);
     if (JSON.stringify(settings) !== JSON.stringify(event.payload.settings))
       await event.action.setSettings(settings);
+    catalogSync.track(event.action, this.kind, settings);
     await codexController.show(event.action, this.kind, settings);
+    await styleService
+      .addToCatalog(catalogValuesOf(this.kind, settings))
+      .catch(() => undefined);
   }
 
   override onWillDisappear(event: WillDisappearEvent<ActionSettings>): void {
+    catalogSync.untrack(event.action.id);
     codexController.hide(event.action.id);
   }
 
@@ -41,11 +86,9 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
     event: DidReceiveSettingsEvent<ActionSettings>,
   ): Promise<void> {
     if (!event.action.isKey()) return;
-    await codexController.settingsChanged(
-      event.action,
-      this.kind,
-      this.#withDefaults(event.payload.settings),
-    );
+    const settings = this.#withDefaults(event.payload.settings);
+    catalogSync.track(event.action, this.kind, settings);
+    await codexController.settingsChanged(event.action, this.kind, settings);
   }
 
   override async onKeyDown(event: KeyDownEvent<ActionSettings>): Promise<void> {
@@ -60,7 +103,20 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
   override async onSendToPlugin(
     event: SendToPluginEvent<JsonValue, ActionSettings>,
   ): Promise<void> {
-    await styleService.handle(event.payload);
+    const payload = event.payload;
+    if (isRecord(payload) && payload.type === "catalog/add") {
+      await styleService.addToCatalog(additionsFrom(payload));
+      return;
+    }
+    if (isRecord(payload) && payload.type === "state/get") {
+      const state = await codexController.currentState();
+      await streamDeck.ui.sendToPropertyInspector({
+        type: "state/current",
+        ...(state ?? {}),
+      });
+      return;
+    }
+    await styleService.handle(payload);
   }
 
   #withDefaults(settings: ActionSettings): ActionSettings {

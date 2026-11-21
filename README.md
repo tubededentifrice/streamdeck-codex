@@ -26,7 +26,7 @@ not change a response that Codex is already generating.
 ## Requirements
 
 - macOS 12 or later.
-- Codex desktop.
+- Codex desktop or T3 Code.
 - Elgato Stream Deck 7.1 or later.
 - Node.js 24 for development.
 
@@ -41,6 +41,18 @@ not change a response that Codex is already generating.
 
 Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 `medium`, `high`, or `xhigh`.
+
+**Add value** adds the current model and thinking level of the selected task.
+The current value shows next to the button, so you can copy a new model
+identifier.
+
+Clear **Cycle** to keep a value on the key without cycling to it. The key still
+shows the label and colors of that value when the task uses it.
+
+The keys share their values. A model in a Preset or Model key is added to each
+Model key, and a thinking level in a Preset or Thinking key is added to each
+Thinking key. Shared values are added once, with **Cycle** cleared. A value
+that you remove from a key does not come back.
 
 For a Shortcut key, select the one Codex shortcut that the key opens.
 
@@ -71,6 +83,33 @@ settings while a side chat is open. It changes these settings for a local
 parent task. See
 [side-chat support](docs/side-chat-support.md) for the current compatibility
 status and the retest procedure.
+
+## T3 Code
+
+The keys also control T3 Code. The keys follow the last app that you brought to
+the front: Codex desktop or T3 Code.
+
+- Model, Thinking, and Preset keys read and change the model and thinking level
+  in the composer of the open T3 Code thread. This includes a new thread that
+  you did not send yet, and a thread in a linked or remote environment.
+- A change applies to the next message of the thread.
+- With a side chat open, the keys follow the message field that had the focus
+  last: the thread or the side chat.
+- Use model identifiers such as `gpt-6.2-sol` or `claude-opus-5-5`. The key
+  matches them with the names in the T3 Code model picker, such as
+  "GPT-6.2-Sol" or "Claude Opus 5.5".
+- Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
+  use your T3 Code key bindings. T3 Code has no side chat.
+
+The plug-in uses only the T3 Code window on this Mac. It reads the model button
+of the composer and selects items in the model picker through macOS
+Accessibility. It does not connect to a T3 Code server. Allow Stream Deck in
+**System Settings > Privacy & Security > Accessibility**. Without this
+permission, the keys show **ALLOW ACCESS**.
+
+A key press opens the T3 Code model picker briefly and then returns the focus
+to where it was, such as the message field. A T3 Code
+update that changes the composer can require a plug-in update.
 
 ## Install a release
 
@@ -123,7 +162,9 @@ ImageMagick and Chrome, Chromium, or Edge. See the
 The main code areas are:
 
 - `src/actions/` for Stream Deck actions.
-- `src/codex/` for Codex task access.
+- `src/apps/` for the frontmost-app watcher and the app router.
+- `src/codex/` for Codex task access and Shortcut keys.
+- `src/t3code/` for T3 Code thread access.
 - `src/domain/` for settings and color definitions.
 - `src/ui/` for key rendering.
 - `com.courcelle.codex-controls.sdPlugin/` for the manifest, property inspector,

@@ -2,6 +2,18 @@ import type { JsonObject } from "@elgato/utils";
 
 import type { CodexState, SettingsActionKind } from "./settings";
 
+// Same comparison as `sameModel` in settings.ts. This module keeps no runtime
+// imports, because the publication script loads it with Node type stripping,
+// which cannot resolve extensionless imports.
+function sameValue(a: unknown, b: string): boolean {
+  const comparable = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  return typeof a === "string" && comparable(a) === comparable(b);
+}
+
 export type KeyStyle = Readonly<{
   backgroundColor: string;
   borderColor: string;
@@ -12,6 +24,7 @@ export type KeyStyle = Readonly<{
 
 export type PluginGlobalSettings = JsonObject & {
   customStyles?: KeyStyle[];
+  valueCatalog?: JsonObject;
   lastRoute?: { hostId: string; threadId: string };
 };
 
@@ -145,9 +158,13 @@ export function activeStyleFor(
         : settings.presets;
 
   const activeChoice = choices?.find((choice) => {
-    if (kind === "model") return choice.model === state.model;
-    if (kind === "thinking") return choice.effort === state.effort;
-    return choice.model === state.model && choice.effort === state.effort;
+    const model = sameValue(choice.model, state.model);
+    const effort = sameValue(choice.effort, state.effort);
+    return kind === "model"
+      ? model
+      : kind === "thinking"
+        ? effort
+        : model && effort;
   });
 
   return resolveStyleById(activeChoice?.styleId, globalSettings);

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ShortcutLauncher } from "../src/codex/shortcut-launcher";
+import {
+  parseT3Binding,
+  ShortcutLauncher,
+} from "../src/codex/shortcut-launcher";
 
 describe("Codex shortcut launcher", () => {
   it.each([
@@ -38,5 +41,66 @@ describe("Codex shortcut launcher", () => {
     await expect(launcher.open("review")).rejects.toThrow(
       "Check macOS Automation and Accessibility permissions",
     );
+  });
+});
+
+describe("T3 Code shortcut launcher", () => {
+  function launcher(keybindings?: unknown) {
+    const execute = vi.fn(async (file: string, args: readonly string[]) => {
+      void file;
+      void args;
+    });
+    const value = new ShortcutLauncher(execute, {
+      keybindingsPath: "/keybindings.json",
+      readText: () => {
+        if (keybindings === undefined) throw new Error("missing");
+        return JSON.stringify(keybindings);
+      },
+    });
+    return { execute, value };
+  }
+
+  it.each([
+    ["review", "key code 2", "{command down}"],
+    ["terminal", "key code 38", "{command down}"],
+    ["browser", "key code 38", "{command down, shift down}"],
+    ["files", "key code 35", "{command down}"],
+  ] as const)(
+    "opens %s with the default T3 Code binding",
+    async (shortcut, key, modifiers) => {
+      const { execute, value } = launcher();
+
+      await value.open(shortcut, "t3code");
+
+      const script = execute.mock.calls[0][1][1];
+      expect(script).toContain('application id "com.t3tools.t3code"');
+      expect(script).toContain(`${key} using ${modifiers}`);
+    },
+  );
+
+  it("uses the last custom T3 Code binding", async () => {
+    const { execute, value } = launcher([
+      { command: "terminal.toggle", key: "mod+j" },
+      { command: "terminal.toggle", key: "ctrl+alt+t", when: "!terminalFocus" },
+    ]);
+
+    await value.open("terminal", "t3code");
+
+    expect(execute.mock.calls[0][1][1]).toContain(
+      "key code 17 using {control down, option down}",
+    );
+  });
+
+  it("reports a shortcut that T3 Code does not have", async () => {
+    const { execute, value } = launcher();
+
+    await expect(value.open("side-chat", "t3code")).rejects.toThrow(
+      "The selected T3 Code shortcut is not available.",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each(["mod+f13", "hyper+j", ""])("rejects the %s binding", (binding) => {
+    expect(parseT3Binding(binding)).toBeUndefined();
   });
 });

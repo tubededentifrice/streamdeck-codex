@@ -21,6 +21,11 @@
 - Keep model and thinking controls easy to extend with more values and future
   Codex controls. Keep Codex access separate from Stream Deck actions and key
   rendering.
+- Support T3 Code threads, including unsent drafts and threads in linked
+  environments. Follow the last frontmost app, Codex desktop or T3 Code. Use
+  only the local T3 Code window through macOS Accessibility: read the window
+  address and the composer model button, and change values through the model
+  picker. Do not connect to T3 Code servers.
 - Store custom color presets in Stream Deck global plug-in settings. Keep the 16
   built-in presets immutable.
 - Treat a Codex desktop side chat as its parent task until the checks in

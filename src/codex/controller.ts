@@ -6,7 +6,7 @@ import type {
   SettingsActionKind,
 } from "../domain/settings";
 import {
-  choicesFor,
+  cycleChoices,
   displayChoice,
   nextChoice,
   targetState,
@@ -14,6 +14,9 @@ import {
 import { activeStyleFor } from "../domain/styles";
 import { renderError, renderKey, renderLoading } from "../ui/key-renderer";
 import { styleService } from "../ui/style-service";
+import { AgentClient } from "../apps/agent-client";
+import { frontAppWatcher } from "../apps/front-app-watcher";
+import { isT3HostId, T3CodeClient } from "../t3code/client";
 import { CodexDesktopClient } from "./desktop-client";
 import { CodexError, isResolvingTaskError } from "./errors";
 
@@ -52,13 +55,17 @@ export class CodexController {
     this.#styles = styles;
     this.#client =
       client ??
-      new CodexDesktopClient(undefined, (route) => {
-        void styles.saveLastRoute(route).catch(() => {
-          streamDeck.logger.error(
-            "Codex selected-task route could not be saved.",
-          );
-        });
-      });
+      new AgentClient(
+        new CodexDesktopClient(undefined, (route) => {
+          void styles.saveLastRoute(route).catch(() => {
+            streamDeck.logger.error(
+              "Codex selected-task route could not be saved.",
+            );
+          });
+        }),
+        new T3CodeClient(frontAppWatcher),
+        frontAppWatcher,
+      );
   }
 
   start(): void {
@@ -76,6 +83,22 @@ export class CodexController {
   ): Promise<void> {
     this.#visible.set(action.id, { action, kind, settings });
     return this.refreshAll();
+  }
+
+  /** The next-turn values of the selected task, for the property inspector. */
+  async currentState(): Promise<
+    { app: "codex" | "t3code"; effort: string; model: string } | undefined
+  > {
+    try {
+      const state = await this.#client.readState();
+      return {
+        app: isT3HostId(state.hostId) ? "t3code" : "codex",
+        effort: state.effort,
+        model: state.model,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   hide(actionId: string): void {
@@ -235,7 +258,7 @@ export class CodexController {
     await Promise.all(
       [...this.#visible.values()].map(async ({ action, kind, settings }) => {
         if (this.#busy.get(action.id)?.routeRevision === routeRevision) return;
-        const count = choicesFor(kind as "preset", settings).length;
+        const count = cycleChoices(kind, settings).length;
         const next = nextChoice(kind as "preset", settings, state);
         const current = displayChoice(kind, settings, state);
         const style = activeStyleFor(
@@ -303,7 +326,7 @@ export class CodexController {
     settings: ActionSettings,
     state: CodexState,
   ): Promise<void> {
-    const count = choicesFor(kind as "preset", settings).length;
+    const count = cycleChoices(kind, settings).length;
     const next = nextChoice(kind as "preset", settings, state);
     const current = displayChoice(kind, settings, state);
     const style = activeStyleFor(kind, settings, state, this.#styles.settings);

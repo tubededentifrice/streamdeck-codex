@@ -1,11 +1,23 @@
+import type { AgentApp } from "../apps/front-app-watcher";
+
 export type CodexErrorCode =
-  "offline" | "resolving-task" | "select-task" | "task-state-unavailable";
+  | "accessibility"
+  | "offline"
+  | "resolving-task"
+  | "select-task"
+  | "task-state-unavailable";
 
 export class CodexError extends Error {
+  readonly app: AgentApp;
   readonly code: CodexErrorCode;
 
-  constructor(code: CodexErrorCode, message: string, options?: ErrorOptions) {
+  constructor(
+    code: CodexErrorCode,
+    message: string,
+    options?: ErrorOptions & { app?: AgentApp },
+  ) {
     super(message, options);
+    this.app = options?.app ?? "codex";
     this.code = code;
   }
 }

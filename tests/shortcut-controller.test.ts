@@ -70,10 +70,10 @@ describe("shortcut controller", () => {
     expect(images.at(-1)).not.toContain("NEXT");
 
     await controller.press(action, settings);
-    expect(launcher.open).toHaveBeenNthCalledWith(1, "review");
+    expect(launcher.open).toHaveBeenNthCalledWith(1, "review", "codex");
 
     await controller.press(action, settings);
-    expect(launcher.open).toHaveBeenNthCalledWith(2, "review");
+    expect(launcher.open).toHaveBeenNthCalledWith(2, "review", "codex");
     expect(images.at(-1)).toContain("%3EREVIEW%3C");
   });
 
