@@ -93,6 +93,8 @@ the front: Codex desktop or T3 Code.
   in the composer of the open T3 Code thread. This includes a new thread that
   you did not send yet, and a thread in a linked or remote environment.
 - A change applies to the next message of the thread.
+- With a side chat open, the keys follow the message field that had the focus
+  last: the thread or the side chat.
 - Use model identifiers such as `gpt-6.2-sol` or `claude-opus-5-5`. The key
   matches them with the names in the T3 Code model picker, such as
   "GPT-6.2-Sol" or "Claude Opus 5.5".

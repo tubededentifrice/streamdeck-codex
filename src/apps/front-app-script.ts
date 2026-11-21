@@ -22,7 +22,10 @@ let last = "";
 let area;
 let areaPid = 0;
 let areaWindow;
-let composer;
+// The composers of the page, and the one whose message field had the focus
+// last. The keys follow that composer.
+let composers = [];
+let active = 0;
 let composerUrl;
 let composerSearchedAt = 0;
 let manualPid = 0;
@@ -50,27 +53,42 @@ function currentArea(application, pid) {
   area = findArea(window);
   areaPid = pid;
   areaWindow = window;
-  composer = undefined;
+  composers = [];
   return area === undefined ? undefined : string(area, "AXURL");
 }
-function currentComposer(url, force) {
-  if (composer !== undefined && composerUrl === url && string(composer, "AXDescription")) return composer;
+function currentComposers(url, force) {
+  if (
+    composers.length > 0 &&
+    composerUrl === url &&
+    composers.every((item) => string(item.button, "AXDescription"))
+  )
+    return composers;
   const now = Date.now() / 1000;
-  if (!force && composerUrl === url && now - composerSearchedAt < COMPOSER_RETRY) return undefined;
+  if (!force && composerUrl === url && now - composerSearchedAt < COMPOSER_RETRY) return composers;
   composerSearchedAt = now;
+  if (composerUrl !== url) active = 0;
   composerUrl = url;
-  composer = findComposer(area);
-  return composer;
+  composers = findComposers(area);
+  return composers;
+}
+function followFocus(application) {
+  const focused = copy(application, "AXFocusedUIElement");
+  if (focused !== undefined && !focused.isNil()) {
+    const index = composers.findIndex((item) => focused.isEqual(item.text));
+    if (index >= 0) active = index;
+  }
+  if (active >= composers.length) active = 0;
 }
 function t3Page(pid) {
   const application = $.AXUIElementCreateApplication(pid);
   enableAccessibility(application, pid);
   const url = currentArea(application, pid);
-  if (!url) return { composer: null, url: null };
-  if (!THREAD_PAGE.test(url)) return { composer: null, url };
-  const button = currentComposer(url, false);
-  const label = button === undefined ? undefined : string(button, "AXDescription");
-  return { composer: label || null, url };
+  if (!url) return { composer: null, index: 0, url: null };
+  if (!THREAD_PAGE.test(url)) return { composer: null, index: 0, url };
+  currentComposers(url, false);
+  followFocus(application);
+  const label = composers.length === 0 ? undefined : string(composers[active].button, "AXDescription");
+  return { composer: label || null, index: active, url };
 }
 function runCommand(path) {
   const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
@@ -89,9 +107,12 @@ function runCommand(path) {
     const url = currentArea(t3.element, t3.pid);
     if (!url || !THREAD_PAGE.test(url)) throw new Error("error:T3 Code shows no thread.");
     if (request.url && request.url !== url) throw new Error("error:The selected task changed before the update.");
-    const button = currentComposer(url, true);
-    if (button === undefined) throw new Error("error:T3 Code shows no model button.");
-    write({ result: { description: applyComposer(t3.element, button, request), id: request.id } });
+    currentComposers(url, true);
+    followFocus(t3.element);
+    if (composers.length === 0) throw new Error("error:T3 Code shows no model button.");
+    if (Number.isInteger(request.composer) && request.composer !== active)
+      throw new Error("error:The selected task changed before the update.");
+    write({ result: { description: applyComposer(t3.element, composers[active].button, request), id: request.id } });
   } catch (error) {
     const message = String((error && error.message) || error);
     write({
@@ -113,12 +134,12 @@ function run(argv) {
       const front = workspace.frontmostApplication;
       const bundle = front.isNil() ? null : front.bundleIdentifier.js;
       const ax = $.AXIsProcessTrusted() === true;
-      let page = { composer: null, url: null };
+      let page = { composer: null, index: 0, url: null };
       if (ax && bundle === T3) page = t3Page(front.processIdentifier);
       const running = [];
       for (const id of [CODEX, T3])
         if ($.NSRunningApplication.runningApplicationsWithBundleIdentifier(id).count > 0) running.push(id);
-      emit({ ax, composer: page.composer, front: bundle, running, t3: page.url });
+      emit({ ax, composer: page.composer, composerIndex: page.index, front: bundle, running, t3: page.url });
     }
     $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(COMMAND_INTERVAL));
   }

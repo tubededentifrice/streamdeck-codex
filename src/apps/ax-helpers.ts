@@ -61,26 +61,27 @@ function findArea(window) {
   }
   return undefined;
 }
-// The model button is the first untitled pop-up button with text after the
-// message field. Long
-// lists, such as the messages of a thread, are skipped except for their last
-// items, so the walk stays short.
-function findComposer(root) {
-  let seenMessage = false;
-  let found;
+// Each composer is a message field and its model button: the first untitled
+// pop-up button with text after the field. A thread can show more than one
+// composer, such as a side chat. Long lists, such as the messages of a thread,
+// are skipped except for their last items, so the walk stays short.
+function findComposers(root) {
+  const found = [];
+  let text;
   let visited = 0;
   (function walk(element, depth) {
-    if (found || depth > 60 || visited > 20000) return;
+    if (depth > 60 || visited > 20000) return;
     visited += 1;
     const role = string(element, "AXRole");
-    if (role === "AXTextArea") seenMessage = true;
+    if (role === "AXTextArea") text = element;
     else if (
-      seenMessage &&
+      text !== undefined &&
       role === "AXPopUpButton" &&
       !string(element, "AXTitle") &&
       children(element).some((child) => string(child, "AXRole") === "AXStaticText")
     ) {
-      found = element;
+      found.push({ button: element, text });
+      text = undefined;
       return;
     }
     const list = children(element);

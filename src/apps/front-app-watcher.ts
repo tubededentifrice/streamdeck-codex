@@ -18,6 +18,8 @@ export type FrontAppSnapshot = Readonly<{
   started: boolean;
   /** The description of the T3 Code model button, such as "GPT-6.2-Sol, High · Standard". */
   t3Composer: string | undefined;
+  /** The composer that the keys follow: 0 for the thread, 1 for a side chat. */
+  t3ComposerIndex: number;
   t3Url: string | undefined;
 }>;
 
@@ -35,6 +37,8 @@ export type ComposerRequest = Readonly<{
   model: string;
   /** The T3 Code page that the key saw. The command fails on another page. */
   url: string | undefined;
+  /** The composer that the key saw. The command fails for another one. */
+  composer: number;
 }>;
 
 type PendingCommand = {
@@ -62,6 +66,7 @@ export class FrontAppWatcher {
     app: undefined,
     started: false,
     t3Composer: undefined,
+    t3ComposerIndex: 0,
     t3Url: undefined,
   };
   #stopped = true;
@@ -143,6 +148,7 @@ export class FrontAppWatcher {
     const message = value as {
       ax?: unknown;
       composer?: unknown;
+      composerIndex?: unknown;
       front?: unknown;
       running?: unknown;
       t3?: unknown;
@@ -162,6 +168,12 @@ export class FrontAppWatcher {
             ? message.composer
             : undefined
           : this.#snapshot.t3Composer,
+      t3ComposerIndex:
+        front === "t3code"
+          ? Number.isSafeInteger(message.composerIndex)
+            ? (message.composerIndex as number)
+            : 0
+          : this.#snapshot.t3ComposerIndex,
       t3Url:
         front === "t3code"
           ? typeof message.t3 === "string"
@@ -176,6 +188,7 @@ export class FrontAppWatcher {
       previous.app !== next.app ||
       previous.started !== next.started ||
       previous.t3Composer !== next.t3Composer ||
+      previous.t3ComposerIndex !== next.t3ComposerIndex ||
       previous.t3Url !== next.t3Url
     )
       for (const listener of this.#listeners) listener();

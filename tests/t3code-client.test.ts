@@ -34,6 +34,7 @@ function watcher(snapshot: Partial<FrontAppSnapshot> = {}) {
       app: "t3code",
       started: true,
       t3Composer: "GPT-6.2-Sol, High · Standard",
+      t3ComposerIndex: 0,
       t3Url: `t3code://app/#/draft/${DRAFT}`,
       ...snapshot,
     } as FrontAppSnapshot,
@@ -118,6 +119,7 @@ describe("T3 Code client", () => {
     );
 
     expect(run).toHaveBeenCalledWith({
+      composer: 0,
       effort: "medium",
       model: "claude-opus-5-5",
       url: `t3code://app/#/draft/${DRAFT}`,
@@ -199,5 +201,19 @@ describe("T3 Code client", () => {
     );
 
     expect((await client.readState()).model).toBe("claude-opus-5-5");
+  });
+
+  it("treats a focus move to the side chat as a new task", async () => {
+    const view = watcher();
+    const run = vi.fn(async () => "GPT-6.2-Sol, Low");
+    const client = makeClient(view, run);
+    const state = await client.readState();
+    const revision = client.routeRevision;
+
+    view.emit({ t3Composer: "Claude Opus 5.5, High", t3ComposerIndex: 1 });
+
+    expect(client.routeRevision).toBe(revision + 1);
+    await client.update("gpt-6.2-sol", "low", state.threadId, state.hostId);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ composer: 1 }));
   });
 });

@@ -35,6 +35,7 @@ describe("front app watcher", () => {
       app: "t3code",
       started: true,
       t3Composer: "GPT-6.2-Sol, High",
+      t3ComposerIndex: 0,
       t3Url: URL,
     });
 
@@ -60,6 +61,36 @@ describe("front app watcher", () => {
     const both = new FrontAppWatcher();
     both.apply(line({ ax: false, front: null, running: [CODEX, T3] }));
     expect(both.snapshot.app).toBeUndefined();
+  });
+
+  it("follows the composer that has the focus", () => {
+    const watcher = new FrontAppWatcher();
+    const listener = vi.fn();
+    watcher.onChange(listener);
+    watcher.apply(
+      line({
+        ax: true,
+        composer: "A, High",
+        composerIndex: 0,
+        front: T3,
+        t3: URL,
+      }),
+    );
+    watcher.apply(
+      line({
+        ax: true,
+        composer: "B, Low",
+        composerIndex: 1,
+        front: T3,
+        t3: URL,
+      }),
+    );
+
+    expect(watcher.snapshot).toMatchObject({
+      t3Composer: "B, Low",
+      t3ComposerIndex: 1,
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it("clears the T3 Code page when T3 Code shows no page", () => {
@@ -154,6 +185,7 @@ describe("front app watcher commands", () => {
     expect(fs.statSync(directory).mode & 0o777).toBe(0o700);
 
     const result = watcher.runComposer({
+      composer: 0,
       effort: "high",
       model: "gpt-6.2-sol",
       url: URL,
@@ -177,7 +209,12 @@ describe("front app watcher commands", () => {
 
   it("rejects with the error of the command", async () => {
     const { args, children, watcher } = started();
-    const result = watcher.runComposer({ effort: "x", model: "m", url: URL });
+    const result = watcher.runComposer({
+      composer: 0,
+      effort: "x",
+      model: "m",
+      url: URL,
+    });
     const { id } = JSON.parse(
       fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
     );
@@ -190,7 +227,12 @@ describe("front app watcher commands", () => {
 
   it("rejects a command when the watcher process ends", async () => {
     const { children, watcher } = started();
-    const result = watcher.runComposer({ effort: "x", model: "m", url: URL });
+    const result = watcher.runComposer({
+      composer: 0,
+      effort: "x",
+      model: "m",
+      url: URL,
+    });
     children[0].emit("exit");
     await expect(result).rejects.toThrow("T3 Code did not apply the change.");
     watcher.stop();

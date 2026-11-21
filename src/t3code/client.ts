@@ -144,6 +144,7 @@ export class T3CodeClient {
     const description = await this.#run({
       effort,
       model,
+      composer: this.#watcher.snapshot.t3ComposerIndex,
       url: this.#watcher.snapshot.t3Url,
     });
     const deadline = Date.now() + VERIFY_TIMEOUT;
@@ -185,7 +186,9 @@ export class T3CodeClient {
 
   #syncRoute(): void {
     const route = parseT3Route(this.#watcher.snapshot.t3Url);
-    const key = route ? `${hostIdFor(route)}\0${route.threadId}` : undefined;
+    const key = route
+      ? `${hostIdFor(route)}\0${route.threadId}\0${this.#watcher.snapshot.t3ComposerIndex}`
+      : undefined;
     if (key === this.#routeKey) return;
     this.#routeKey = key;
     this.#routeRevision += 1;
