@@ -5,14 +5,22 @@ export type ActionKind = SettingsActionKind | "shortcut";
 export type ShortcutId =
   "review" | "terminal" | "browser" | "files" | "side-chat";
 
-export type ModelChoice = { label: string; model: string; styleId?: string };
+/** `enabled: false` keeps a value for display but leaves it out of the cycle. */
+export type ModelChoice = {
+  enabled?: boolean;
+  label: string;
+  model: string;
+  styleId?: string;
+};
 export type ThinkingChoice = {
   effort: string;
+  enabled?: boolean;
   label: string;
   styleId?: string;
 };
 export type PresetChoice = {
   effort: string;
+  enabled?: boolean;
   label: string;
   model: string;
   styleId?: string;
@@ -24,6 +32,8 @@ export type ShortcutChoice = {
 };
 
 export type ActionSettings = JsonObject & {
+  /** The last value catalog revision that this key merged. */
+  catalogRevision?: number;
   modelFontSize?: number;
   models?: ModelChoice[];
   presets?: PresetChoice[];
@@ -86,6 +96,11 @@ const STYLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function clean(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+/** A model id or thinking value that a key can store. */
+export function isConfigValue(value: unknown): value is string {
+  return typeof value === "string" && VALUE_PATTERN.test(value);
 }
 
 function cleanValue(value: unknown): string {
@@ -163,13 +178,14 @@ export function choicesFor(
     )
       .slice(0, MAX_CHOICES)
       .map((choice) => ({
+        ...(choice?.enabled === false ? { enabled: false } : {}),
         label: clean(choice?.label, 32),
         model: cleanValue(choice?.model),
         styleId: cleanStyleId(choice?.styleId),
       }))
       .filter((choice) => choice.model)
       .map((choice) => ({ ...choice, label: choice.label || choice.model }));
-    return uniqueBy(choices, (choice) => choice.model);
+    return uniqueBy(choices, (choice) => comparable(choice.model));
   }
 
   if (kind === "thinking") {
@@ -179,12 +195,13 @@ export function choicesFor(
       .slice(0, MAX_CHOICES)
       .map((choice) => ({
         effort: cleanValue(choice?.effort),
+        ...(choice?.enabled === false ? { enabled: false } : {}),
         label: clean(choice?.label, 32),
         styleId: cleanStyleId(choice?.styleId),
       }))
       .filter((choice) => choice.effort)
       .map((choice) => ({ ...choice, label: choice.label || choice.effort }));
-    return uniqueBy(choices, (choice) => choice.effort);
+    return uniqueBy(choices, (choice) => comparable(choice.effort));
   }
 
   if (kind === "shortcut") {
@@ -216,6 +233,7 @@ export function choicesFor(
     .slice(0, MAX_CHOICES)
     .map((choice) => ({
       effort: cleanValue(choice?.effort),
+      ...(choice?.enabled === false ? { enabled: false } : {}),
       label: clean(choice?.label, 32),
       model: cleanValue(choice?.model),
       styleId: cleanStyleId(choice?.styleId),
@@ -225,7 +243,10 @@ export function choicesFor(
       ...choice,
       label: choice.label || `${choice.model} · ${choice.effort}`,
     }));
-  return uniqueBy(choices, (choice) => `${choice.model}\0${choice.effort}`);
+  return uniqueBy(
+    choices,
+    (choice) => `${comparable(choice.model)}\0${comparable(choice.effort)}`,
+  );
 }
 
 function comparable(value: string): string {
@@ -259,6 +280,16 @@ export function matchesChoice(
   return model && effort;
 }
 
+/** The enabled values, in the order that a key cycles through them. */
+export function cycleChoices(
+  kind: SettingsActionKind,
+  settings: ActionSettings,
+): Array<ModelChoice | ThinkingChoice | PresetChoice> {
+  return choicesFor(kind as "preset", settings).filter(
+    (choice) => choice.enabled !== false,
+  );
+}
+
 export function nextChoice(
   kind: "model",
   settings: ActionSettings,
@@ -279,7 +310,7 @@ export function nextChoice(
   settings: ActionSettings,
   state: CodexState,
 ): ModelChoice | ThinkingChoice | PresetChoice | undefined {
-  const choices = choicesFor(kind as "preset", settings);
+  const choices = cycleChoices(kind, settings);
   if (choices.length === 0) return undefined;
 
   const index = choices.findIndex((choice) =>

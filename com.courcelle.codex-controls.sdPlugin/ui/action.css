@@ -264,9 +264,40 @@ button:disabled {
   cursor: default;
   opacity: 0.4;
 }
-#add {
-  display: block;
-  margin: 10px 0 0 auto;
+.add-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+#current {
+  color: #a8b3c4;
+  font:
+    11px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+  white-space: nowrap;
+}
+.cycle {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+}
+.cycle input {
+  height: 14px;
+  margin: 0;
+  width: 14px;
+}
+.choice.off .key-preview,
+.choice.off .row {
+  opacity: 0.5;
 }
 #style-manager {
   border-top: 1px solid #555;

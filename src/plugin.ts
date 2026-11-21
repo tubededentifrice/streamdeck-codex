@@ -6,6 +6,7 @@ import {
   ShortcutAction,
   ThinkingAction,
 } from "./actions/codex-actions";
+import { catalogSync } from "./actions/catalog-sync";
 import { frontAppWatcher } from "./apps/front-app-watcher";
 import { codexController } from "./codex/controller";
 import { shortcutController } from "./codex/shortcut-controller";
@@ -29,5 +30,6 @@ frontAppWatcher.onChange(() => {
   frontAppLog = line;
   streamDeck.logger.info(line);
 });
+catalogSync.start();
 codexController.start();
 shortcutController.start();

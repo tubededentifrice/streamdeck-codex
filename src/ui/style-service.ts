@@ -8,6 +8,12 @@ import {
   type PluginGlobalSettings,
   sanitizeCustomStyles,
 } from "../domain/styles";
+import {
+  addToCatalog,
+  type CatalogAdditions,
+  sanitizeCatalog,
+  type ValueCatalog,
+} from "../domain/catalog";
 import { sanitizeCodexRoute, type CodexRoute } from "../domain/route";
 
 type StyleMessage =
@@ -20,12 +26,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 class StyleService {
+  readonly #catalogListeners = new Set<() => void>();
   readonly #listeners = new Set<() => void>();
   #settings: PluginGlobalSettings = {};
   #writePromise: Promise<void> = Promise.resolve();
 
   get settings(): PluginGlobalSettings {
     return this.#settings;
+  }
+
+  get catalog(): ValueCatalog {
+    return sanitizeCatalog(this.#settings.valueCatalog);
+  }
+
+  onCatalogChange(listener: () => void): () => void {
+    this.#catalogListeners.add(listener);
+    return () => this.#catalogListeners.delete(listener);
+  }
+
+  /** Adds the models and thinking levels that a key uses to the catalog. */
+  addToCatalog(additions: CatalogAdditions): Promise<void> {
+    if (!addToCatalog(this.catalog, additions)) return Promise.resolve();
+    return this.#updateSettings((settings) => {
+      const next = addToCatalog(
+        sanitizeCatalog(settings.valueCatalog),
+        additions,
+      );
+      return next ? { ...settings, valueCatalog: next } : settings;
+    });
   }
 
   get lastRoute(): CodexRoute | undefined {
@@ -83,6 +111,7 @@ class StyleService {
   }
 
   #apply(settings: PluginGlobalSettings): void {
+    const previousCatalog = JSON.stringify(this.#settings.valueCatalog ?? null);
     const previousStyles = JSON.stringify(
       sanitizeCustomStyles(this.#settings.customStyles),
     );
@@ -91,6 +120,8 @@ class StyleService {
       ...settings,
       customStyles,
     };
+    if (previousCatalog !== JSON.stringify(settings.valueCatalog ?? null))
+      for (const listener of this.#catalogListeners) listener();
     if (previousStyles === JSON.stringify(customStyles)) return;
     for (const listener of this.#listeners) listener();
   }

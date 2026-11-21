@@ -7,6 +7,7 @@
   let settings = {};
   let saveTimer;
   let styleCatalog = { builtInStyles: [], customStyles: [] };
+  let currentState;
   const defaults = {
     model: [
       { label: "Sol", model: "gpt-5.6-sol", styleId: "builtin:ocean" },
@@ -117,6 +118,10 @@
         JSON.stringify({ event: registerEvent, uuid: inspectorId }),
       );
       sendToPlugin({ type: "styles/get" });
+      if (kind !== "shortcut") {
+        sendToPlugin({ type: "state/get" });
+        window.setInterval(() => sendToPlugin({ type: "state/get" }), 1500);
+      }
       document.querySelector("#intro").textContent =
         kind === "shortcut"
           ? "Select the Codex shortcut that this key opens."
@@ -128,7 +133,20 @@
     });
     websocket.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
+      if (message.event === "didReceiveSettings") {
+        mergeIncoming(message.payload?.settings);
+        return;
+      }
       if (message.event !== "sendToPropertyInspector") return;
+      if (message.payload?.type === "state/current") {
+        currentState =
+          typeof message.payload.model === "string" &&
+          typeof message.payload.effort === "string"
+            ? message.payload
+            : undefined;
+        renderCurrent();
+        return;
+      }
       if (message.payload?.type === "styles/catalog") {
         styleCatalog = message.payload;
         render();
@@ -154,6 +172,91 @@
 
   function values() {
     return settings[settingKey[kind]];
+  }
+
+  function comparable(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  function isEnabled(value) {
+    return value?.enabled !== false;
+  }
+
+  function identity(value) {
+    if (kind === "model") return comparable(value?.model);
+    if (kind === "thinking") return comparable(value?.effort);
+    return `${comparable(value?.model)} ${comparable(value?.effort)}`;
+  }
+
+  function effortLabel(effort) {
+    if (effort === "xhigh") return "Extra high";
+    return effort ? effort[0].toUpperCase() + effort.slice(1) : "";
+  }
+
+  function modelLabel(model) {
+    const gpt = /^gpt-([0-9.]+)-(.+)$/.exec(model);
+    if (gpt) return `${gpt[2][0].toUpperCase()}${gpt[2].slice(1)} ${gpt[1]}`;
+    const claude = /^claude-([a-z]+)-([0-9-]+)$/.exec(model);
+    if (claude)
+      return `${claude[1][0].toUpperCase()}${claude[1].slice(1)} ${claude[2].replaceAll("-", ".")}`;
+    return model;
+  }
+
+  function currentText() {
+    if (!currentState) return "";
+    if (kind === "thinking") return currentState.effort;
+    if (kind === "model") return currentState.model;
+    return `${currentState.model} · ${currentState.effort}`;
+  }
+
+  function renderCurrent() {
+    const element = document.querySelector("#current");
+    const text = currentText();
+    element.hidden = !text;
+    element.textContent = text;
+    element.title = text;
+  }
+
+  // Sends the models and thinking levels of a value to the shared catalog,
+  // so the plug-in can add them to the other keys as disabled values.
+  function shareValue(value) {
+    const models =
+      kind !== "thinking" && value?.model
+        ? [
+            {
+              label: value.label || modelLabel(value.model),
+              model: value.model,
+            },
+          ]
+        : [];
+    const efforts =
+      kind !== "model" && value?.effort
+        ? [
+            {
+              effort: value.effort,
+              label:
+                kind === "thinking" ? value.label : effortLabel(value.effort),
+            },
+          ]
+        : [];
+    if (models.length || efforts.length)
+      sendToPlugin({ type: "catalog/add", efforts, models });
+  }
+
+  // Keeps local edits and adds the values that the plug-in linked to this key.
+  function mergeIncoming(incoming) {
+    const list = incoming?.[settingKey[kind]];
+    if (!Array.isArray(list)) return;
+    const known = new Set(values().map(identity));
+    const added = list.filter((value) => !known.has(identity(value)));
+    if (Number.isFinite(incoming.catalogRevision))
+      settings.catalogRevision = incoming.catalogRevision;
+    if (added.length === 0) return;
+    values().push(...added.map((value) => structuredClone(value)));
+    render();
   }
   function save() {
     clearTimeout(saveTimer);
@@ -184,6 +287,8 @@
       refreshPreviewText();
       save();
     });
+    if (field === "model")
+      input.addEventListener("change", () => shareValue(value));
     row.append(labelElement, input);
     container.append(row);
   }
@@ -210,6 +315,7 @@
       value.effort = select.value;
       refreshPreviewText();
       save();
+      shareValue(value);
     });
     row.append(labelElement, select);
     container.append(row);
@@ -357,13 +463,14 @@
   }
 
   function previewTarget(index) {
-    const configured = values();
+    const cycle = values().filter(isEnabled);
+    const position = cycle.indexOf(values()[index]);
     const target =
-      configured.length > 1
-        ? configured[(index + 1) % configured.length]
-        : configured[index];
+      cycle.length > 1 && position >= 0
+        ? cycle[(position + 1) % cycle.length]
+        : cycle[0];
     if (!target) return "NO CHOICES";
-    const prefix = configured.length > 1 ? "NEXT" : "SET";
+    const prefix = cycle.length > 1 ? "NEXT" : "SET";
     const label =
       kind === "thinking"
         ? target.effort || "medium"
@@ -567,11 +674,13 @@
   }
 
   function render() {
+    const scroll = window.scrollY;
     const container = document.querySelector("#choices");
     container.replaceChildren();
     values().forEach((value, index) => {
       const choice = document.createElement("section");
       choice.className = "choice";
+      choice.classList.toggle("off", !isEnabled(value));
       if (kind === "shortcut") {
         shortcutRow(choice, value);
         inputRow(choice, "Label", "label", value, "Short key label");
@@ -593,6 +702,22 @@
       }
       const buttons = document.createElement("div");
       buttons.className = "buttons";
+      const cycle = document.createElement("label");
+      cycle.className = "cycle";
+      cycle.title = "Include this value when the key cycles";
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = isEnabled(value);
+      enabled.disabled =
+        isEnabled(value) && values().filter(isEnabled).length === 1;
+      enabled.addEventListener("change", () => {
+        if (enabled.checked) delete value.enabled;
+        else value.enabled = false;
+        render();
+        save();
+      });
+      cycle.append(enabled, "Cycle");
+      buttons.append(cycle);
       for (const [text, move] of [
         ["↑", -1],
         ["↓", 1],
@@ -616,7 +741,9 @@
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove";
-      remove.disabled = values().length === 1;
+      remove.disabled =
+        values().length === 1 ||
+        (isEnabled(value) && values().filter(isEnabled).length === 1);
       remove.addEventListener("click", () => {
         values().splice(index, 1);
         render();
@@ -626,6 +753,7 @@
       choice.append(buttons);
       container.append(choice);
     });
+    window.scrollTo(0, scroll);
   }
 
   document.querySelector("#add").addEventListener("click", () => {
@@ -634,15 +762,29 @@
     const styleId =
       styleCatalog.builtInStyles[values().length % 16]?.id ||
       builtInStyleIds[values().length % builtInStyleIds.length];
-    values().push(
+    const model = currentState?.model || "";
+    const effort =
+      currentState?.effort && currentState.effort !== "default"
+        ? currentState.effort
+        : "";
+    const value =
       kind === "model"
-        ? { label: "", model: "", styleId }
+        ? { label: model ? modelLabel(model) : "", model, styleId }
         : kind === "thinking"
-          ? { label: "", effort: "", styleId }
-          : { label: "", model: "", effort: "", styleId },
-    );
+          ? { label: effortLabel(effort), effort, styleId }
+          : { label: model ? modelLabel(model) : "", model, effort, styleId };
+    if (values().some((item) => identity(item) === identity(value))) {
+      value.model = kind === "thinking" ? undefined : "";
+      value.effort = kind === "model" ? undefined : "";
+      value.label = "";
+    }
+    values().push(value);
     render();
     save();
+    shareValue(value);
+    document
+      .querySelector("#choices .choice:last-child")
+      ?.scrollIntoView({ block: "nearest" });
   });
 
   for (const [selector, setting] of [

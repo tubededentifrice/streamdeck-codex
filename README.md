@@ -42,6 +42,18 @@ not change a response that Codex is already generating.
 Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 `medium`, `high`, or `xhigh`.
 
+**Add value** adds the current model and thinking level of the selected task.
+The current value shows next to the button, so you can copy a new model
+identifier.
+
+Clear **Cycle** to keep a value on the key without cycling to it. The key still
+shows the label and colors of that value when the task uses it.
+
+The keys share their values. A model in a Preset or Model key is added to each
+Model key, and a thinking level in a Preset or Thinking key is added to each
+Thinking key. Shared values are added once, with **Cycle** cleared. A value
+that you remove from a key does not come back.
+
 For a Shortcut key, select the one Codex shortcut that the key opens.
 
 If the current Codex value is not in the configured list, the key uses a gray

@@ -5,6 +5,7 @@ import { CodexError } from "../codex/errors";
 import { sameEffort, sameModel, type CodexState } from "../domain/settings";
 import { COMPOSER_SCRIPT } from "./composer-script";
 import { effortFromLabel, parseComposerLabel } from "./labels";
+import { T3ModelNames } from "./model-names";
 
 const HOST_PREFIX = "t3code:";
 const DRAFT_HOST = `${HOST_PREFIX}draft`;
@@ -55,7 +56,13 @@ function hostIdFor(route: T3Route): string {
     : DRAFT_HOST;
 }
 
-function stateFrom(route: T3Route, description: string): CodexState {
+type ModelNames = Pick<T3ModelNames, "idFor">;
+
+function stateFrom(
+  route: T3Route,
+  description: string,
+  names: ModelNames,
+): CodexState {
   const parsed = parseComposerLabel(description);
   if (!parsed)
     throw new CodexError("task-state-unavailable", "T3 Code shows no model.", {
@@ -67,7 +74,7 @@ function stateFrom(route: T3Route, description: string): CodexState {
         ? "default"
         : effortFromLabel(parsed.effortLabel),
     hostId: hostIdFor(route),
-    model: parsed.model,
+    model: names.idFor(parsed.model),
     threadId: route.threadId,
   };
 }
@@ -113,14 +120,20 @@ function runComposer(request: {
  */
 export class T3CodeClient {
   readonly #listeners = new Set<() => void>();
+  readonly #names: ModelNames;
   readonly #run: ComposerRunner;
   readonly #watcher: Watcher;
   #routeKey: string | undefined;
   #routeRevision = 0;
 
-  constructor(watcher: Watcher, run: ComposerRunner = runComposer) {
+  constructor(
+    watcher: Watcher,
+    run: ComposerRunner = runComposer,
+    names: ModelNames = new T3ModelNames(),
+  ) {
     this.#watcher = watcher;
     this.#run = run;
+    this.#names = names;
     this.#syncRoute();
     watcher.onChange(() => {
       this.#syncRoute();
@@ -142,7 +155,7 @@ export class T3CodeClient {
     const description = this.#watcher.snapshot.t3Composer;
     if (!description)
       throw error("resolving-task", "T3 Code shows no model button.");
-    return stateFrom(route, description);
+    return stateFrom(route, description, this.#names);
   }
 
   async update(
@@ -160,7 +173,9 @@ export class T3CodeClient {
       throw new Error("The selected task changed before the update.");
     const description = await this.#run({ effort, model });
     const deadline = Date.now() + VERIFY_TIMEOUT;
-    let state = description ? stateFrom(route, description) : undefined;
+    let state = description
+      ? stateFrom(route, description, this.#names)
+      : undefined;
     while (
       !state ||
       !sameModel(state.model, model) ||
@@ -174,7 +189,7 @@ export class T3CodeClient {
         );
       await new Promise((resolve) => setTimeout(resolve, 100));
       const current = this.#watcher.snapshot.t3Composer;
-      state = current ? stateFrom(route, current) : undefined;
+      state = current ? stateFrom(route, current, this.#names) : undefined;
     }
     for (const listener of this.#listeners) listener();
     return state;
