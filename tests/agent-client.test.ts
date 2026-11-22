@@ -10,6 +10,12 @@ const CODEX: CodexState = {
   model: "gpt-5.6-sol",
   threadId: "01a0289e-e3d3-7fc1-8774-bbc3bc4f0712",
 };
+const CHATGPT: CodexState = {
+  effort: "high",
+  hostId: "chatgpt",
+  model: "gpt-6.2-sol",
+  threadId: "Upgrade",
+};
 const T3: CodexState = {
   effort: "high",
   hostId: "t3code:draft",
@@ -41,8 +47,9 @@ function watcher(app: FrontAppSnapshot["app"]) {
     snapshot: {
       accessibility: true,
       app,
+      chatgpt: { composer: undefined, index: 0, route: undefined },
       started: true,
-      t3Url: undefined,
+      t3code: { composer: undefined, index: 0, route: undefined },
     } as FrontAppSnapshot,
   };
 }
@@ -52,7 +59,7 @@ describe("agent client", () => {
     const codex = client(CODEX);
     const t3 = client(T3);
     const view = watcher(undefined);
-    const agent = new AgentClient(codex, t3, view);
+    const agent = new AgentClient(codex, t3, client(CHATGPT), view);
 
     await expect(agent.readState()).resolves.toBe(CODEX);
     const revision = agent.routeRevision;
@@ -68,10 +75,12 @@ describe("agent client", () => {
   it("sends each update to the app that owns the task", async () => {
     const codex = client(CODEX);
     const t3 = client(T3);
-    const agent = new AgentClient(codex, t3, watcher("codex"));
+    const chatgpt = client(CHATGPT);
+    const agent = new AgentClient(codex, t3, chatgpt, watcher("codex"));
 
     await agent.update("claude-opus-5-5", "high", T3.threadId, "t3code:draft");
     await agent.update("gpt-5.6-sol", "high", CODEX.threadId, "local");
+    await agent.update("gpt-6.2-sol", "low", "Upgrade", "chatgpt");
 
     expect(t3.update).toHaveBeenCalledWith(
       "claude-opus-5-5",
@@ -85,11 +94,39 @@ describe("agent client", () => {
       CODEX.threadId,
       "local",
     );
+    expect(codex.update).toHaveBeenCalledOnce();
+    expect(chatgpt.update).toHaveBeenCalledWith(
+      "gpt-6.2-sol",
+      "low",
+      "Upgrade",
+      "chatgpt",
+    );
+  });
+
+  it("reads ChatGPT when ChatGPT comes to the front", async () => {
+    const view = watcher("codex");
+    const agent = new AgentClient(
+      client(CODEX),
+      client(T3),
+      client(CHATGPT),
+      view,
+    );
+
+    await expect(agent.readState()).resolves.toBe(CODEX);
+    view.emit("chatgpt");
+    await expect(agent.readState()).resolves.toBe(CHATGPT);
+    view.emit("t3code");
+    await expect(agent.readState()).resolves.toBe(T3);
   });
 
   it("restores only the Codex route", () => {
     const codex = client(CODEX);
-    const agent = new AgentClient(codex, client(T3), watcher(undefined));
+    const agent = new AgentClient(
+      codex,
+      client(T3),
+      client(CHATGPT),
+      watcher(undefined),
+    );
 
     agent.restoreRoute({ hostId: "local", threadId: CODEX.threadId });
 

@@ -1,41 +1,11 @@
-import { effortFromLabel, normalizeLabel, parseComposerLabel } from "./labels";
+import { effortFromLabel, parseComposerLabel } from "./labels";
 
 // JXA functions that set the model and thinking level in the T3 Code
 // composer. The front app watcher runs them, so the window and the model
 // button are already known. They need AX_HELPERS.
 export const COMPOSER_ACTION = `
-const normalizeLabel = ${normalizeLabel.toString()};
 const effortFromLabel = ${effortFromLabel.toString()};
 const parseComposerLabel = ${parseComposerLabel.toString()};
-function find(root, test) {
-  let found;
-  (function walk(element, depth) {
-    if (found || depth > 40) return;
-    if (test(element)) {
-      found = element;
-      return;
-    }
-    for (const child of children(element)) walk(child, depth + 1);
-  })(root, 0);
-  return found;
-}
-function findAll(root, test) {
-  const found = [];
-  (function walk(element, depth) {
-    if (depth > 40) return;
-    if (test(element)) found.push(element);
-    for (const child of children(element)) walk(child, depth + 1);
-  })(root, 0);
-  return found;
-}
-function waitFor(test, seconds) {
-  const end = Date.now() + seconds * 1000;
-  for (;;) {
-    if (test()) return true;
-    if (Date.now() >= end) return false;
-    pause(0.03);
-  }
-}
 function composerState(button) {
   const parsed = parseComposerLabel(string(button, "AXDescription") || "");
   return parsed === undefined

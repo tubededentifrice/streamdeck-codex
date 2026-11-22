@@ -4,6 +4,11 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+- Control ChatGPT for macOS through its window: new chats, remote chats, and
+  side chats.
+- Change the ChatGPT model through the model list with keyboard input, also
+  when ChatGPT does not expose Accessibility actions.
+
 ## 0.1.0 - 2026-08-29
 
 - Prepare the plug-in information, artwork, screenshots, support text, and

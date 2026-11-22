@@ -33,6 +33,31 @@ describe("Codex shortcut launcher", () => {
     },
   );
 
+  it("opens a ChatGPT shortcut with the same Codex command", async () => {
+    const execute = vi.fn(async (file: string, args: readonly string[]) => {
+      void file;
+      void args;
+    });
+    const launcher = new ShortcutLauncher(execute);
+
+    await launcher.open("side-chat", "chatgpt");
+
+    const [file, args] = execute.mock.calls[0];
+    expect(file).toBe("/usr/bin/osascript");
+    expect(args[1]).toContain('application id "com.openai.codex"');
+    expect(args[1]).toContain("key code 1 using {command down, option down}");
+  });
+
+  it("names ChatGPT in a ChatGPT shortcut error", async () => {
+    const launcher = new ShortcutLauncher(async () => {
+      throw new Error("denied");
+    });
+
+    await expect(launcher.open("review", "chatgpt")).rejects.toThrow(
+      "ChatGPT could not run the shortcut.",
+    );
+  });
+
   it("returns a safe permission error", async () => {
     const launcher = new ShortcutLauncher(async () => {
       throw new Error("Private executable path");

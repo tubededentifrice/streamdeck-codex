@@ -352,7 +352,9 @@ export function renderError(
                   : "UPDATE FAILED"
                 : app === "t3code"
                   ? "T3 OFFLINE"
-                  : "CODEX OFFLINE";
+                  : app === "chatgpt"
+                    ? "CHATGPT OFFLINE"
+                    : "CODEX OFFLINE";
   const showKind = display.showTitle !== false;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
   const kindMarkup = showKind

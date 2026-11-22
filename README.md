@@ -26,7 +26,7 @@ not change a response that Codex is already generating.
 ## Requirements
 
 - macOS 12 or later.
-- Codex desktop or T3 Code.
+- ChatGPT for macOS, Codex desktop, or T3 Code.
 - Elgato Stream Deck 7.1 or later.
 - Node.js 24 for development.
 
@@ -84,10 +84,43 @@ parent task. See
 [side-chat support](docs/side-chat-support.md) for the current compatibility
 status and the retest procedure.
 
+## ChatGPT for macOS
+
+ChatGPT for macOS replaces Codex desktop and uses the same bundle ID. It has no
+Codex desktop IPC. The keys control ChatGPT through its window, in the same way
+as T3 Code.
+
+- Model, Thinking, and Preset keys read and change the model and thinking level
+  in the composer of the open chat. This includes a new chat that you did not
+  send yet, a chat on a remote host, and a side chat.
+- A change applies to the next message of the chat.
+- With a side chat open, the keys follow the message field that had the focus
+  last: the chat or the side chat.
+- The key matches model identifiers such as `gpt-6.2-sol` with the names on the
+  ChatGPT model button, such as "GPT-6.2 Sol", through the Codex model list in
+  `~/.codex/models_cache.json`.
+- ChatGPT does not always expose Accessibility actions on its model picker.
+  The key gives the keyboard focus to a picker item and sends a key to ChatGPT:
+  Space, Return, Escape, or an arrow key. This also works when ChatGPT is in
+  the background, after its window had the focus once.
+- A model change uses the ChatGPT model list.
+- With a custom model provider that has a `model_catalog_url`, ChatGPT can turn
+  off the `api_key_model_discovery` feature of its Codex App Server. The model
+  list is then empty, and a new chat shows "Custom" as its model. Add
+  `api_key_model_discovery = true` to `[features]` in `~/.codex/config.toml` on
+  this Mac and on each remote host, then restart ChatGPT.
+- Shortcut keys use the standard ChatGPT keyboard commands. These commands are
+  the same as in Codex desktop.
+
+The window title identifies the open chat, because ChatGPT does not show the
+chat ID to Accessibility. A key press opens the model picker briefly and then
+returns the focus to where it was. A ChatGPT update that changes the composer
+can require a plug-in update.
+
 ## T3 Code
 
 The keys also control T3 Code. The keys follow the last app that you brought to
-the front: Codex desktop or T3 Code.
+the front: ChatGPT, Codex desktop, or T3 Code.
 
 - Model, Thinking, and Preset keys read and change the model and thinking level
   in the composer of the open T3 Code thread. This includes a new thread that
@@ -101,10 +134,10 @@ the front: Codex desktop or T3 Code.
 - Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
   use your T3 Code key bindings. T3 Code has no side chat.
 
-The plug-in uses only the T3 Code window on this Mac. It reads the model button
-of the composer and selects items in the model picker through macOS
-Accessibility. It does not connect to a T3 Code server. Allow Stream Deck in
-**System Settings > Privacy & Security > Accessibility**. Without this
+The plug-in uses only the T3 Code and ChatGPT windows on this Mac. It reads the
+model button of the composer and selects items in the model picker through
+macOS Accessibility. It does not connect to a T3 Code server. Allow Stream Deck
+in **System Settings > Privacy & Security > Accessibility**. Without this
 permission, the keys show **ALLOW ACCESS**.
 
 A key press opens the T3 Code model picker briefly and then returns the focus
@@ -164,6 +197,7 @@ The main code areas are:
 - `src/actions/` for Stream Deck actions.
 - `src/apps/` for the frontmost-app watcher and the app router.
 - `src/codex/` for Codex task access and Shortcut keys.
+- `src/chatgpt/` for ChatGPT chat access.
 - `src/t3code/` for T3 Code thread access.
 - `src/domain/` for settings and color definitions.
 - `src/ui/` for key rendering.
