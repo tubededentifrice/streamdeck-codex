@@ -200,10 +200,14 @@ function runCommand(path) {
 function run(argv) {
   const command = argv[0] + "/command.json";
   const workspace = $.NSWorkspace.sharedWorkspace;
+  // A plug-in restart can end the plug-in without this process. The process
+  // then has a new parent and stops, so that only one watcher runs.
+  const parent = $.getppid();
   let polledAt = 0;
   for (;;) {
     if (files.fileExistsAtPath(command)) runCommand(command);
     if (Date.now() - polledAt >= POLL_INTERVAL * 1000) {
+      if ($.getppid() !== parent) $.exit(0);
       polledAt = Date.now();
       const front = workspace.frontmostApplication;
       const key = appKey(front);

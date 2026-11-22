@@ -32,7 +32,12 @@ function applyClaude(application, button, request) {
   const fail = (message) => {
     throw new Error("error:" + message);
   };
-  const state = () => parseClaudeLabel(claudeLabel(button) || "");
+  const state = () => {
+    const parsed = parseClaudeLabel(claudeLabel(button) || "");
+    return parsed === undefined
+      ? undefined
+      : { effort: parsed.effortLabel === undefined ? undefined : claudeEffort(parsed.effortLabel), model: parsed.model };
+  };
   const isOpen = () => string(button, "AXExpanded") === "true";
   const linked = (element) => {
     const list = copy(element, "AXLinkedUIElements");
@@ -64,6 +69,25 @@ function applyClaude(application, button, request) {
       if (menu !== undefined) $.AXUIElementPerformAction(menu, $("AXCancel"));
       waitFor(() => !isOpen(), 0.5);
     }
+  };
+  // Dialogs open in the "portal-root" layer, near the top of the page.
+  const page = (() => {
+    let element = button;
+    for (let depth = 0; depth < 80 && element !== undefined && !element.isNil(); depth += 1) {
+      if (string(element, "AXRole") === "AXWebArea") return element;
+      element = copy(element, "AXParent");
+    }
+    return undefined;
+  })();
+  const alertDialog = () => {
+    if (page === undefined) return undefined;
+    for (const top of children(page))
+      for (const layer of children(top)) {
+        if (string(layer, "AXDOMIdentifier") !== "portal-root") continue;
+        const dialog = find(layer, (e) => string(e, "AXSubrole") === "AXApplicationAlertDialog");
+        if (dialog !== undefined) return dialog;
+      }
+    return undefined;
   };
   const focused = copy(application, "AXFocusedUIElement");
   const selection = focused === undefined ? undefined : copy(focused, "AXSelectedTextRange");
@@ -101,10 +125,32 @@ function applyClaude(application, button, request) {
         effort === undefined ? undefined : items(openSubmenu(effort)).find((item) => claudeEffort(title(item)) === request.effort);
       if (choice === undefined) fail("The model has no " + request.effort + " thinking choice.");
       press(choice);
+      let dialog;
       waitFor(() => {
         const value = state();
-        return value !== undefined && value.effort === request.effort;
+        if (value !== undefined && value.effort === request.effort) return true;
+        dialog = alertDialog();
+        return dialog !== undefined;
       }, 1.5);
+      // Claude can ask to confirm a high effort, such as "Use Extra". The key
+      // asked for this effort, so the action confirms it.
+      if (dialog !== undefined) {
+        const buttons = findAll(dialog, (e) => string(e, "AXRole") === "AXButton");
+        const confirm = buttons.find((e) => {
+          const label = title(e);
+          return label.startsWith("Use ") && claudeEffort(label.slice(4)) === request.effort;
+        });
+        if (confirm === undefined) {
+          const cancel = buttons.find((e) => title(e) === "Close");
+          if (cancel !== undefined) press(cancel);
+          fail("Claude did not accept the " + request.effort + " thinking choice.");
+        }
+        press(confirm);
+        waitFor(() => {
+          const value = state();
+          return value !== undefined && value.effort === request.effort;
+        }, 1.5);
+      }
     }
   } finally {
     close();

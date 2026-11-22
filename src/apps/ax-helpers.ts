@@ -7,6 +7,8 @@ export const AX_HELPERS = String.raw`
 ObjC.import("AppKit");
 ObjC.import("ApplicationServices");
 ObjC.import("CoreGraphics");
+ObjC.import("stdlib");
+ObjC.bindFunction("getppid", ["int", []]);
 ObjC.bindFunction("AXUIElementCreateApplication", ["id", ["int"]]);
 ObjC.bindFunction("AXUIElementCopyAttributeValue", ["int", ["id", "id", "id *"]]);
 ObjC.bindFunction("AXUIElementSetAttributeValue", ["int", ["id", "id", "id"]]);

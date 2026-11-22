@@ -37,9 +37,9 @@ describe("Claude labels", () => {
   });
 
   it.each([
-    ["Opus 5.5, High", { effort: "high", model: "Opus 5.5" }],
-    ["Opus 5.5, Extra", { effort: "xhigh", model: "Opus 5.5" }],
-    ["Opus 4.5", { effort: undefined, model: "Opus 4.5" }],
+    ["Opus 5.5, High", { effortLabel: "High", model: "Opus 5.5" }],
+    ["Opus 5.5, Extra", { effortLabel: "Extra", model: "Opus 5.5" }],
+    ["Opus 4.5", { effortLabel: undefined, model: "Opus 4.5" }],
   ])("reads the %s label", (label, expected) => {
     expect(parseClaudeLabel(label)).toEqual(expected);
   });
@@ -70,10 +70,29 @@ describe("Claude labels", () => {
     expect(claudeModelId(name)).toBe(id);
   });
 
+  // The JXA program gets each function through toString. A reference to
+  // another module function breaks after minification, so each one must run
+  // alone.
+  it.each([
+    [claudeButtonLabel, ["Model: Opus 4.5", []]],
+    [claudeEffort, ["Extra"]],
+    [claudeModelMatches, ["Opus 5.5", "claude-opus-5-5"]],
+    [parseClaudeLabel, ["Opus 5.5, High"]],
+  ] as const)("runs %o without other functions", (fn, args) => {
+    const alone = new Function(`return (${fn.toString()});`)() as (
+      ...values: readonly unknown[]
+    ) => unknown;
+    expect(alone(...args)).toEqual(
+      (fn as (...values: readonly unknown[]) => unknown)(...args),
+    );
+  });
+
   it("builds JXA programs that parse", () => {
     expect(() => new Function(FRONT_APP_SCRIPT)).not.toThrow();
     expect(FRONT_APP_SCRIPT).toContain("const claudeModelMatches = function");
     expect(FRONT_APP_SCRIPT).toContain("function applyClaude(");
     expect(FRONT_APP_SCRIPT).toContain("function toggleClaudePanel(");
+    expect(FRONT_APP_SCRIPT).toContain("AXApplicationAlertDialog");
+    expect(FRONT_APP_SCRIPT).toContain("$.getppid() !== parent");
   });
 });

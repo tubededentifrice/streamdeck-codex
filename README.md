@@ -142,7 +142,8 @@ T3 Code.
   "Opus 5.5", also in **More models**.
 - The Claude effort levels are `low`, `medium`, `high`, `xhigh` ("Extra"), and
   `max`. A model without effort levels, such as some cloud session models,
-  shows no thinking level.
+  shows no thinking level. When Claude asks you to confirm an effort, such as
+  "Use Extra", the key confirms the effort that it sets.
 - Shortcut keys toggle the Claude Code session panels: Review (Changes),
   Terminal, Browser, and Files. Then Claude comes to the front. Claude has no
   side chat. A chat has no session panels.

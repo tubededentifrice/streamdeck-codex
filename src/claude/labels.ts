@@ -41,18 +41,19 @@ export function claudeButtonLabel(
   return name || undefined;
 }
 
-/** Reads a model button label, such as "Opus 5.5, High" or "Opus 4.5". */
+/**
+ * Reads a model button label, such as "Opus 5.5, High" or "Opus 4.5". Convert
+ * the effort label with claudeEffort.
+ */
 export function parseClaudeLabel(
   label: string,
-): { effort: string | undefined; model: string } | undefined {
+): { effortLabel: string | undefined; model: string } | undefined {
   const separator = label.lastIndexOf(", ");
   const model = (separator < 0 ? label : label.slice(0, separator)).trim();
   if (!model) return undefined;
-  return {
-    effort:
-      separator < 0 ? undefined : claudeEffort(label.slice(separator + 2)),
-    model,
-  };
+  const effortLabel =
+    separator < 0 ? undefined : label.slice(separator + 2).trim() || undefined;
+  return { effortLabel, model };
 }
 
 /**

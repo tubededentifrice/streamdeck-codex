@@ -1,7 +1,12 @@
 import type { FrontAppWatcher } from "../apps/front-app-watcher";
 import { CodexError } from "../codex/errors";
 import { sameEffort, type CodexState } from "../domain/settings";
-import { claudeModelId, claudeModelMatches, parseClaudeLabel } from "./labels";
+import {
+  claudeEffort,
+  claudeModelId,
+  claudeModelMatches,
+  parseClaudeLabel,
+} from "./labels";
 
 export const CLAUDE_HOST_ID = "claude";
 const VERIFY_TIMEOUT = 3000;
@@ -33,7 +38,10 @@ function stateFrom(route: string, label: string): CodexState {
   const parsed = parseClaudeLabel(label);
   if (!parsed) throw error("task-state-unavailable", "Claude shows no model.");
   return {
-    effort: parsed.effort ?? "default",
+    effort:
+      parsed.effortLabel === undefined
+        ? "default"
+        : (claudeEffort(parsed.effortLabel) ?? "default"),
     hostId: CLAUDE_HOST_ID,
     model: claudeModelId(parsed.model),
     threadId: threadIdFor(route),
