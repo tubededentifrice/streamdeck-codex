@@ -81,8 +81,8 @@ function fadeColor(color: string, fade: number): string {
     .join("")}`;
 }
 
-// Advance widths of a bold sans-serif face, in 1/1000 em. The key font can be
-// heavier than this face, so `emWidth` adds a margin.
+// Advance widths of the bold key font, in 1/1000 em. Stream Deck draws text at
+// these widths.
 const GLYPH_WIDTHS = new Map<string, number>(
   (
     [
@@ -108,15 +108,17 @@ const GLYPH_WIDTHS = new Map<string, number>(
     [...characters].map((character) => [character, width] as const),
   ),
 );
-// The text area inside the border, with a margin.
-const TEXT_WIDTH = 110;
-const TEXT_HEIGHT = 112;
-const MIN_SECTION_GAP = 5;
-// The height that a wrapped value can use.
-const VALUE_HEIGHT = 72;
-const DIVIDER_SPACE = 9;
+// The text box is 1 unit inside the inner edge of the 5-unit border.
+const BOX_TOP = 8.5;
+const BOX_BOTTOM = 135.5;
+const BOX_WIDTH = 127;
+const CAP_HEIGHT = 0.72;
+const SECTION_GAP = 5;
 const TITLE_SIZE = 15;
+const NEXT_SIZE = 20;
 const MIN_FIT_SIZE = 8;
+// The thinking line of a preset is at most this part of the model size.
+const SECONDARY_RATIO = 0.8;
 
 function emWidth(text: string): number {
   let width = 0;
@@ -124,23 +126,23 @@ function emWidth(text: string): number {
     width +=
       GLYPH_WIDTHS.get(character) ??
       ((character.codePointAt(0) ?? 0) >= 0x2e80 ? 1000 : 667);
-  return (width / 1000) * 1.06;
+  return width / 1000;
 }
 
-/** The largest size from `min` to `max` at which `text` fits the key width. */
+/** The largest size from `min` to `max` at which `text` fits the box width. */
 function fitSize(text: string, max: number, min = MIN_FIT_SIZE): number {
   const width = emWidth(text);
   if (width === 0) return max;
-  return Math.max(min, Math.min(max, Math.floor(TEXT_WIDTH / width)));
+  return Math.max(min, Math.min(max, Math.floor(BOX_WIDTH / width)));
 }
 
-/** Shortens `text` with an ellipsis until it fits the key width at `size`. */
+/** Shortens `text` with an ellipsis until it fits the box width at `size`. */
 function clip(text: string, size: number): string {
-  if (emWidth(text) * size <= TEXT_WIDTH) return text;
+  if (emWidth(text) * size <= BOX_WIDTH) return text;
   const characters = [...text];
   while (
     characters.length > 1 &&
-    emWidth(`${characters.join("")}…`) * size > TEXT_WIDTH
+    emWidth(`${characters.join("")}…`) * size > BOX_WIDTH
   )
     characters.pop();
   return `${characters.join("").trimEnd()}…`;
@@ -151,7 +153,7 @@ function widthLimit(lines: string[]): number {
   return Math.min(
     ...lines.map((line) => {
       const width = emWidth(line);
-      return width === 0 ? Number.POSITIVE_INFINITY : TEXT_WIDTH / width;
+      return width === 0 ? Number.POSITIVE_INFINITY : BOX_WIDTH / width;
     }),
   );
 }
@@ -166,199 +168,162 @@ function breaks(words: string[], count: number): string[][] {
   return result;
 }
 
-/**
- * Fits a value to the key width. A long value with spaces breaks into up to
- * `maxLines` lines when one line would be smaller than `wrapBelow`. Each added
- * line must make the text clearly larger.
- */
-function fitLines(
-  text: string,
-  max: number,
-  wrapBelow: number,
-  maxLines: number,
-): { lines: string[]; size: number } {
-  const sizeOf = (lines: string[]) =>
-    Math.min(
-      max,
-      widthLimit(lines),
-      (VALUE_HEIGHT - (lines.length - 1) * 3) / (lines.length * 0.7),
-    );
-  let best = { lines: [text], size: sizeOf([text]) };
-  if (best.size < wrapBelow) {
-    const words = text.split(" ").filter(Boolean);
-    for (let count = 2; count <= Math.min(maxLines, words.length); count += 1)
-      for (const lines of breaks(words, count)) {
-        const size = sizeOf(lines);
-        if (size > best.size * 1.3) best = { lines, size };
-      }
-  }
-  return {
-    lines: best.lines,
-    size: Math.max(MIN_FIT_SIZE, Math.floor(best.size)),
-  };
-}
-
 type Line = {
   dim?: boolean;
-  /** The size changes when the stack is too tall for the key. */
-  scalable?: boolean;
   size: number;
   spacing?: number;
   text: string;
   weight: 700 | 800;
 };
-type Section = { divider?: boolean; lines: Line[] };
 
 function lineGap(a: number, b: number): number {
-  return Math.min(5, Math.max(2.5, Math.min(a, b) * 0.14));
+  return Math.min(5, Math.max(2.5, Math.min(a, b) * 0.12));
 }
 
-function sectionHeight(section: Section): number {
-  return section.lines.reduce(
+function stackHeight(lines: Line[]): number {
+  return lines.reduce(
     (height, line, index) =>
       height +
-      line.size * 0.7 +
-      (index > 0 ? lineGap(section.lines[index - 1].size, line.size) : 0),
-    section.divider ? DIVIDER_SPACE : 0,
+      line.size * CAP_HEIGHT +
+      (index > 0 ? lineGap(lines[index - 1].size, line.size) : 0),
+    0,
   );
 }
 
-/** Makes the scalable lines smaller until the stack fits the key height. */
-function fitHeight(sections: Section[]): void {
-  const minimumGaps = Math.max(0, sections.length - 1) * MIN_SECTION_GAP;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const total = sections.reduce(
-      (height, section) => height + sectionHeight(section),
-      minimumGaps,
-    );
-    if (total <= TEXT_HEIGHT) return;
-    const scalable = sections
-      .flatMap((section) => section.lines)
-      .filter((line) => line.scalable);
-    const scalableHeight = scalable.reduce(
-      (height, line) => height + line.size * 0.7,
-      0,
-    );
-    if (scalableHeight === 0) return;
-    const ratio = Math.max(0, 1 - (total - TEXT_HEIGHT) / scalableHeight);
-    for (const line of scalable)
-      line.size = Math.max(MIN_FIT_SIZE, Math.floor(line.size * ratio));
-  }
-}
-
-function drawSections(
-  sections: Section[],
-  font: string,
-  accent: string,
-): string {
-  const heights = sections.map(sectionHeight);
-  const fixed = heights.reduce((total, height) => total + height, 0);
-  const gap =
-    sections.length < 2
-      ? 0
-      : Math.max(
-          MIN_SECTION_GAP,
-          Math.min(22, (TEXT_HEIGHT + 4 - fixed) / (sections.length - 1)),
-        );
-  let top = 72 - (fixed + gap * Math.max(0, sections.length - 1)) / 2;
-  const markup: string[] = [];
-  for (const section of sections) {
-    if (section.divider) {
-      const y = Number((top + 1).toFixed(2));
-      markup.push(
-        `<line x1="20" y1="${y}" x2="124" y2="${y}" stroke="${accent}" stroke-width="2" opacity="0.55"/>`,
-      );
-      top += DIVIDER_SPACE;
-    }
-    section.lines.forEach((line, index) => {
-      if (index > 0) top += lineGap(section.lines[index - 1].size, line.size);
-      const height = line.size * 0.7;
+/** Draws `lines` from `top`, which is the cap top of the first line. */
+function drawLines(lines: Line[], top: number, font: string): string {
+  return lines
+    .map((line, index) => {
+      if (index > 0) top += lineGap(lines[index - 1].size, line.size);
+      top += line.size * CAP_HEIGHT;
       const spacing = line.spacing ? ` letter-spacing="${line.spacing}"` : "";
       const dim = line.dim ? ' fill-opacity="0.8"' : "";
-      markup.push(
-        `<text x="72" y="${alphabeticBaseline(top + height / 2, line.size)}" text-anchor="middle" fill="${font}"${dim} font-family="-apple-system,Arial,sans-serif" font-size="${line.size}" font-weight="${line.weight}"${spacing}>${escapeXml(line.text)}</text>`,
-      );
-      top += height;
-    });
-    top += gap;
-  }
-  return markup.join("\n\t\t");
-}
-
-function titleSection(kind: ActionKind): Section {
-  return {
-    lines: [
-      { size: TITLE_SIZE, spacing: 1.5, text: titleOf(kind), weight: 800 },
-    ],
-  };
+      return `<text x="72" y="${Number(top.toFixed(2))}" text-anchor="middle" fill="${font}"${dim} font-family="-apple-system,Arial,sans-serif" font-size="${line.size}" font-weight="${line.weight}"${spacing}>${escapeXml(line.text)}</text>`;
+    })
+    .join("\n\t\t");
 }
 
 /**
- * The value lines of a key. With `fitText`, each line takes the largest size
- * that fits the key; otherwise it takes its configured size.
+ * Fits the value lines into `height` and the box width, as large as possible.
+ * A long value with spaces breaks into up to `maxLines` lines when one line
+ * would be small, if each added line makes the text clearly larger. A
+ * thinking line is at most 80% of the model size.
  */
-function valueSection(
+function fitValue(
+  primary: string,
+  secondary: string | undefined,
+  height: number,
+  maxLines: number,
+): Line[] {
+  const linesFor = (lines: string[], size: number): Line[] => {
+    const result: Line[] = lines.map((text) => ({ size, text, weight: 800 }));
+    if (secondary !== undefined)
+      result.push({
+        size: Math.max(
+          MIN_FIT_SIZE,
+          Math.floor(Math.min(widthLimit([secondary]), size * SECONDARY_RATIO)),
+        ),
+        text: secondary,
+        weight: 700,
+      });
+    return result;
+  };
+  const largest = (lines: string[]): number => {
+    let size = Math.floor(
+      Math.min(widthLimit(lines), height / (CAP_HEIGHT * lines.length)),
+    );
+    while (size > MIN_FIT_SIZE && stackHeight(linesFor(lines, size)) > height)
+      size -= 1;
+    return Math.max(MIN_FIT_SIZE, size);
+  };
+  let best = { lines: [primary], size: largest([primary]) };
+  const words = primary.split(" ").filter(Boolean);
+  if (best.size < 18)
+    for (let count = 2; count <= Math.min(maxLines, words.length); count += 1) {
+      // At the same size, the most even lines have the narrowest widest line.
+      const candidates = breaks(words, count).map((lines) => ({
+        lines,
+        size: largest(lines),
+        width: widthLimit(lines),
+      }));
+      const option = candidates.reduce((a, b) =>
+        b.size > a.size || (b.size === a.size && b.width > a.width) ? b : a,
+      );
+      if (option.size > best.size * 1.3) best = option;
+    }
+  return linesFor(best.lines, best.size).map((line) => ({
+    ...line,
+    text: clip(line.text, line.size),
+  }));
+}
+
+/**
+ * Draws the title at the top, the next value at the bottom, and the value in
+ * the middle. `value` receives the height that it can use.
+ */
+function drawKey(
+  title: string | undefined,
+  value: (height: number) => Line[],
+  next: string[],
+  font: string,
+): string {
+  let top = BOX_TOP;
+  let bottom = BOX_BOTTOM;
+  const markup: string[] = [];
+  if (title !== undefined) {
+    const lines: Line[] = [
+      {
+        size: fitSize(title, TITLE_SIZE),
+        spacing: 1.5,
+        text: title,
+        weight: 800,
+      },
+    ];
+    markup.push(drawLines(lines, top, font));
+    top += stackHeight(lines) + SECTION_GAP;
+  }
+  if (next.length > 0) {
+    const size = Math.min(...next.map((text) => fitSize(text, NEXT_SIZE)));
+    const lines: Line[] = next.map((text) => ({
+      dim: true,
+      size,
+      text: clip(text, size),
+      weight: 700,
+    }));
+    const height = stackHeight(lines);
+    markup.push(drawLines(lines, bottom - height, font));
+    bottom -= height + SECTION_GAP;
+  }
+  const lines = value(bottom - top);
+  markup.push(
+    drawLines(lines, top + (bottom - top - stackHeight(lines)) / 2, font),
+  );
+  return markup.join("\n\t\t");
+}
+
+/** The value lines at the configured sizes, or fitted to the key. */
+function valueLines(
   primary: string,
   secondary: string | undefined,
   primarySize: number,
   secondarySize: number,
   fit: boolean,
-): Section {
-  if (!fit)
-    return {
-      lines: [
-        { size: primarySize, text: primary.slice(0, 18), weight: 800 },
-        ...(secondary === undefined
-          ? []
-          : [
-              {
-                size: secondarySize,
-                text: secondary.slice(0, 18),
-                weight: 700 as const,
-              },
-            ]),
-      ],
-    };
-  const main = fitLines(
-    primary,
-    secondary === undefined ? 40 : 34,
-    16,
-    secondary === undefined ? 3 : 2,
-  );
-  const lines: Line[] = main.lines.map((text) => ({
-    scalable: true,
-    size: main.size,
-    text,
-    weight: 800,
-  }));
-  if (secondary !== undefined)
-    lines.push({
-      scalable: true,
-      size: Math.min(fitSize(secondary, 30), main.size),
-      text: secondary,
-      weight: 700,
-    });
-  return { lines };
-}
-
-/** The next value below a divider, with the model and thinking on two lines. */
-function nextSection(texts: string[], fit: boolean): Section {
-  const size = fit ? Math.min(...texts.map((text) => fitSize(text, 13))) : 13;
-  return {
-    divider: true,
-    lines: texts.map((text) => ({
-      dim: true,
-      size,
-      text: fit ? clip(text, size) : text.slice(0, 28),
-      weight: 700,
-    })),
-  };
-}
-
-function clipSections(sections: Section[], fit: boolean): void {
-  if (!fit) return;
-  for (const line of sections.flatMap((section) => section.lines))
-    line.text = clip(line.text, line.size);
+): (height: number) => Line[] {
+  if (fit)
+    return (height) =>
+      fitValue(primary, secondary, height, secondary === undefined ? 3 : 2);
+  return () => [
+    { size: primarySize, text: primary.slice(0, 18), weight: 800 },
+    ...(secondary === undefined
+      ? []
+      : [
+          {
+            size: secondarySize,
+            text: secondary.slice(0, 18),
+            weight: 700 as const,
+          },
+        ]),
+  ];
 }
 
 function currentLines(
@@ -415,7 +380,7 @@ function stackCenters(sizes: number[], gap: number): number[] {
   });
 }
 
-/** Shows the current value and, below a divider, the value of the next press. */
+/** Shows the current value and, at the bottom, the value of the next press. */
 export function renderKey(
   kind: SettingsActionKind,
   state: CodexState,
@@ -426,28 +391,22 @@ export function renderKey(
   current?: ModelChoice | ThinkingChoice | PresetChoice,
 ): string {
   const [primary, secondary] = currentLines(kind, state, current);
-  const fit = display.fitText !== false;
   const accent = style?.borderColor ?? COLORS[kind];
-  const font = style?.fontColor ?? "#ffffff";
-  const sections = [
-    ...(display.showTitle === true ? [titleSection(kind)] : []),
-    valueSection(
-      primary,
-      secondary,
-      kind === "thinking"
-        ? fontSize(display.thinkingFontSize, 21)
-        : fontSize(display.modelFontSize, 21),
-      fontSize(display.thinkingFontSize, 18),
-      fit,
-    ),
-    ...(display.showNext !== false
-      ? [nextSection(nextLines(kind, next), fit)]
-      : []),
-  ];
-  if (fit) fitHeight(sections);
-  clipSections(sections, fit);
   return svg(
-    drawSections(sections, font, accent),
+    drawKey(
+      display.showTitle === true ? titleOf(kind) : undefined,
+      valueLines(
+        primary,
+        secondary,
+        kind === "thinking"
+          ? fontSize(display.thinkingFontSize, 21)
+          : fontSize(display.modelFontSize, 21),
+        fontSize(display.thinkingFontSize, 18),
+        display.fitText !== false,
+      ),
+      display.showNext !== false ? nextLines(kind, next) : [],
+      style?.fontColor ?? "#ffffff",
+    ),
     borderColor ?? accent,
     style?.backgroundColor,
   );
@@ -465,25 +424,21 @@ export function renderSingleKey(
   display: DisplayOptions & { inactiveFade?: number } = {},
 ): string {
   const fade = active ? 0 : fadePercent(display.inactiveFade);
-  const fit = display.fitText !== false;
-  const font = fadeColor(style?.fontColor ?? "#ffffff", fade);
-  const background = fadeColor(style?.backgroundColor ?? "#101319", fade);
-  const sections = [
-    ...(display.showTitle === true ? [titleSection("single")] : []),
-    valueSection(
-      preset.label.toUpperCase(),
-      preset.effort.toUpperCase(),
-      fontSize(display.modelFontSize, 21),
-      fontSize(display.thinkingFontSize, 18),
-      fit,
-    ),
-  ];
-  if (fit) fitHeight(sections);
-  clipSections(sections, fit);
   return svg(
-    drawSections(sections, font, style?.borderColor ?? COLORS.single),
+    drawKey(
+      display.showTitle === true ? titleOf("single") : undefined,
+      valueLines(
+        preset.label.toUpperCase(),
+        preset.effort.toUpperCase(),
+        fontSize(display.modelFontSize, 21),
+        fontSize(display.thinkingFontSize, 18),
+        display.fitText !== false,
+      ),
+      [],
+      fadeColor(style?.fontColor ?? "#ffffff", fade),
+    ),
     active ? (borderColor ?? style?.borderColor ?? COLORS.single) : borderColor,
-    background,
+    fadeColor(style?.backgroundColor ?? "#101319", fade),
   );
 }
 

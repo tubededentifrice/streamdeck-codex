@@ -26,7 +26,9 @@ function textLines(image: string): { size: number; text: string; y: number }[] {
     ...image.matchAll(
       /<text[^>]* y="([\d.]+)"[^>]*font-size="(\d+)"[^>]*>([^<]*)<\/text>/g,
     ),
-  ].map(([, y, size, text]) => ({ size: Number(size), text, y: Number(y) }));
+  ]
+    .map(([, y, size, text]) => ({ size: Number(size), text, y: Number(y) }))
+    .sort((a, b) => a.y - b.y);
 }
 
 describe("key renderer", () => {
@@ -105,9 +107,10 @@ describe("key renderer", () => {
     );
     expect(image).toContain(">SOL<");
     expect(image).not.toContain("SOL 5.6");
-    expect(image).toMatch(/font-size="13"[^>]*>LUNA<\/text>/);
+    expect(image).toMatch(/y="135\.5"[^>]*font-size="20"[^>]*>LUNA<\/text>/);
     expect(image).not.toContain("NEXT");
     expect(image).not.toContain("<circle");
+    expect(image).not.toContain("<line");
     expect(image).not.toContain(">MODEL<");
   });
 
@@ -168,8 +171,8 @@ describe("key renderer", () => {
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(titled).toMatch(/y="59\.05"[^>]*>MODEL<\/text>/);
-    expect(titled).toMatch(/y="95\.81"[^>]*>SOL<\/text>/);
+    expect(titled).toMatch(/y="19\.3"[^>]*>MODEL<\/text>/);
+    expect(titled).toMatch(/y="87\.46"[^>]*>SOL<\/text>/);
     expect(titled).not.toContain("<line");
   });
 
@@ -193,7 +196,8 @@ describe("key renderer", () => {
       "HIGH",
     ]);
     expect(lines[2].size).toBe(lines[3].size);
-    expect(lines[3].y).toBeGreaterThan(lines[2].y);
+    expect(lines[3].y).toBe(135.5);
+    expect(lines[1].size).toBeLessThanOrEqual(Math.floor(lines[0].size * 0.8));
     expect(image).not.toContain("SOL 5.6");
   });
 
@@ -241,7 +245,7 @@ describe("key renderer", () => {
         ),
       ),
     );
-    expect(short[0].size).toBe(40);
+    expect(short[0]).toMatchObject({ size: 61, text: "SOL" });
     expect(long[0].size).toBeLessThan(short[0].size);
     expect(long[0].size).toBeGreaterThanOrEqual(16);
   });
@@ -261,8 +265,8 @@ describe("key renderer", () => {
       "VENDOR ULTRA REASONING MODEL PREVIEW 2.1",
     );
     for (const line of lines) {
-      expect(line.y - line.size * 0.7).toBeGreaterThan(10);
-      expect(line.y).toBeLessThan(134);
+      expect(line.y - line.size * 0.72).toBeGreaterThanOrEqual(8.5);
+      expect(line.y).toBeLessThanOrEqual(135.5);
     }
   });
 
@@ -285,9 +289,33 @@ describe("key renderer", () => {
       ),
     );
     expect(lines[0].text).toBe("PRESET");
-    expect(lines.at(-1)?.text).toBe("XHIGH");
-    expect(lines[0].y - lines[0].size * 0.7).toBeGreaterThan(10);
-    expect(lines.at(-1)!.y).toBeLessThan(134);
+    expect(lines.at(-1)).toMatchObject({ text: "XHIGH", y: 135.5 });
+    expect(lines[0].y - lines[0].size * 0.72).toBeCloseTo(8.5, 5);
+    for (let index = 1; index < lines.length; index += 1)
+      expect(lines[index].y - lines[index].size * 0.72).toBeGreaterThan(
+        lines[index - 1].y,
+      );
+  });
+
+  it("keeps the thinking level of a preset at most 80% of the model", () => {
+    const [model, effort] = textLines(
+      decodeURIComponent(
+        renderKey(
+          "preset",
+          state({ effort: "low" }),
+          undefined,
+          undefined,
+          undefined,
+          { showNext: false },
+          { effort: "low", label: "Opus", model: "gpt-5.6-sol" },
+        ),
+      ),
+    );
+    expect(model.text).toBe("OPUS");
+    expect(effort).toMatchObject({
+      size: Math.floor(model.size * 0.8),
+      text: "LOW",
+    });
   });
 
   it("supports larger font sizes and aligns preset values by their size", () => {
@@ -310,8 +338,8 @@ describe("key renderer", () => {
     const [sol, medium] = textLines(image);
     expect(sol).toMatchObject({ size: 48, text: "SOL" });
     expect(medium).toMatchObject({ size: 10, text: "MEDIUM" });
-    // Centers 48 * 0.35 + 2.5 + 10 * 0.35 apart, with baselines 0.36 × size below.
-    expect(medium.y - sol.y).toBeCloseTo(9.12, 2);
+    // A 2.5 gap and the 10 × 0.72 cap height separate the baselines.
+    expect(medium.y - sol.y).toBeCloseTo(9.7, 5);
   });
 
   it("limits unexpected font sizes to the supported range", () => {

@@ -4,11 +4,13 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
-- Fit the text to the key by default. A long model name breaks into lines.
-  Clear **Fit text to key** to set the text sizes.
-- Show the next value without the NEXT or SET prefix and without the dot, in a
-  larger font. A Preset key shows the next model and thinking level on two
-  lines.
+- Fit the text to the key by default. The text fills the key to 1 pixel from
+  the border, and a long model name breaks into lines. On a Preset key, the
+  thinking level is at most 80% of the model size. Clear **Fit text to key** to
+  set the text sizes.
+- Show the next value at the bottom of the key, in a larger font, without the
+  NEXT or SET prefix, the divider, or the dot. A Preset key shows the next
+  model and thinking level on two lines.
 - Hide the action title on new keys.
 - Name a model without a configured label from its identifier, for example
   "Sol 6.2" for `gpt-6.2-sol` and "Opus 5.5" for `claude-opus-5-5`.

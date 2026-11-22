@@ -51,8 +51,8 @@
 		<rect x="5" y="5" width="134" height="134" rx="15" fill="none" stroke="#FBBF24" stroke-width="5"/>
 
 
-		<g transform="translate(0 1)"><polygon points="47,47 66,62 47,77 47,69 57,62 47,55" fill="#FFFBEB"/><rect x="67" y="74" width="28" height="6" rx="3" fill="#FFFBEB"/></g>
-		<text x="72" y="109.2" text-anchor="middle" fill="#FFFBEB" font-family="-apple-system,Arial,sans-serif" font-size="20" font-weight="800">TERMINAL</text>
+		<g transform="translate(0 0.3)"><polygon points="47,47 66,62 47,77 47,69 57,62 47,55" fill="#FFFBEB"/><rect x="67" y="74" width="28" height="6" rx="3" fill="#FFFBEB"/></g>
+		<text x="72" y="109.92" text-anchor="middle" fill="#FFFBEB" font-family="-apple-system,Arial,sans-serif" font-size="22" font-weight="800">TERMINAL</text>
 
 </g>
     <g transform="translate(1224 375) scale(1.3194444444444444)">
@@ -60,8 +60,8 @@
 		<rect x="5" y="5" width="134" height="134" rx="15" fill="none" stroke="#22D3EE" stroke-width="5"/>
 
 
-		<g transform="translate(0 1.35)"><circle cx="72" cy="62" r="26" fill="#ECFEFF"/><circle cx="72" cy="62" r="20" fill="#083344"/><ellipse cx="72" cy="62" rx="10" ry="23" fill="#ECFEFF"/><ellipse cx="72" cy="62" rx="6" ry="20" fill="#083344"/><rect x="47" y="60" width="50" height="4" fill="#ECFEFF"/></g>
-		<text x="72" y="108.84" text-anchor="middle" fill="#ECFEFF" font-family="-apple-system,Arial,sans-serif" font-size="19" font-weight="800">BROWSER</text>
+		<g transform="translate(0 0.3)"><circle cx="72" cy="62" r="26" fill="#ECFEFF"/><circle cx="72" cy="62" r="20" fill="#083344"/><ellipse cx="72" cy="62" rx="10" ry="23" fill="#ECFEFF"/><ellipse cx="72" cy="62" rx="6" ry="20" fill="#083344"/><rect x="47" y="60" width="50" height="4" fill="#ECFEFF"/></g>
+		<text x="72" y="109.92" text-anchor="middle" fill="#ECFEFF" font-family="-apple-system,Arial,sans-serif" font-size="22" font-weight="800">BROWSER</text>
 
 </g>
     <g transform="translate(1446 375) scale(1.3194444444444444)">
@@ -78,8 +78,8 @@
 		<rect x="5" y="5" width="134" height="134" rx="15" fill="none" stroke="#A78BFA" stroke-width="5"/>
 
 
-		<g transform="translate(0 1.35)"><polygon points="40,43 89,43 89,75 60,75 46,86 46,75 40,75" fill="#F5F3FF"/><polygon points="70,57 104,57 104,83 91,83 79,92 79,83 70,83" fill="#F5F3FF"/><rect x="75" y="62" width="24" height="16" rx="2" fill="#2E1065"/></g>
-		<text x="72" y="108.84" text-anchor="middle" fill="#F5F3FF" font-family="-apple-system,Arial,sans-serif" font-size="19" font-weight="800">SIDE CHAT</text>
+		<g transform="translate(0 0.3)"><polygon points="40,43 89,43 89,75 60,75 46,86 46,75 40,75" fill="#F5F3FF"/><polygon points="70,57 104,57 104,83 91,83 79,92 79,83 70,83" fill="#F5F3FF"/><rect x="75" y="62" width="24" height="16" rx="2" fill="#2E1065"/></g>
+		<text x="72" y="109.92" text-anchor="middle" fill="#F5F3FF" font-family="-apple-system,Arial,sans-serif" font-size="22" font-weight="800">SIDE CHAT</text>
 
 </g>
   </g>
