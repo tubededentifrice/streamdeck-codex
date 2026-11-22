@@ -1,11 +1,12 @@
 import { CHATGPT_ACTION } from "../chatgpt/composer-action";
+import { CLAUDE_ACTION } from "../claude/composer-action";
 import { COMPOSER_ACTION } from "../t3code/composer-action";
 import { AX_HELPERS } from "./ax-helpers";
 
 // JXA program run by /usr/bin/osascript. It prints one JSON line each time the
 // frontmost app, the running supported apps, the Accessibility trust, or the
-// composer page of the frontmost T3 Code or ChatGPT window changes.
-// It also runs composer commands that the plug-in writes to
+// composer page of the frontmost T3 Code, ChatGPT, or Claude window changes.
+// It also runs composer and panel commands that the plug-in writes to
 // "<argv[0]>/command.json", and prints each result as a JSON line. The cached
 // window and model buttons make a command fast.
 // The cached elements keep each poll to a few AX copies, because JXA does not
@@ -13,6 +14,7 @@ import { AX_HELPERS } from "./ax-helpers";
 export const FRONT_APP_SCRIPT = `${AX_HELPERS}
 ${COMPOSER_ACTION}
 ${CHATGPT_ACTION}
+${CLAUDE_ACTION}
 const out = $.NSFileHandle.fileHandleWithStandardOutput;
 const files = $.NSFileManager.defaultManager;
 const COMPOSER_RETRY = 1;
@@ -20,19 +22,36 @@ const POLL_INTERVAL = 0.4;
 const COMMAND_INTERVAL = 0.05;
 const THREAD_PAGE = new RegExp("#/(?:threads/)?[^/]+/[^/]+/?$");
 // How each app shows its composers. The route identifies the open thread: the
-// T3 Code page URL, or the ChatGPT window title, because the ChatGPT page URL
-// does not change between threads.
+// T3 Code or Claude page URL, or the ChatGPT window title, because the ChatGPT
+// page URL does not change between threads.
 const APPS = {
   chatgpt: {
     apply: (app, button, request) => applyChatGPT(app.element, app.pid, button, request),
+    panels: { review: (app, area) => toggleChatGPTReview(app.element, app.pid, area) },
     isButton: (element) => Boolean(string(element, "AXTitle")) && !string(element, "AXDescription"),
     label: chatgptLabel,
     name: "ChatGPT",
     prefix: "app://",
     route: (window, url) => string(window, "AXTitle") || null,
   },
+  claude: {
+    apply: (app, button, request) => applyClaude(app.element, button, request),
+    panels: {
+      browser: (app) => toggleClaudePanel(app.element, "Browser"),
+      files: (app) => toggleClaudePanel(app.element, "Files"),
+      review: (app) => toggleClaudePanel(app.element, "Changes"),
+      "side-chat": (app) => toggleClaudePanel(app.element, "Side Chat"),
+      terminal: (app) => toggleClaudePanel(app.element, "Terminal"),
+    },
+    isButton: isClaudeButton,
+    label: claudeLabel,
+    name: "Claude",
+    prefix: "https://claude.ai/",
+    route: (window, url) => url,
+  },
   t3code: {
     apply: (app, button, request) => applyComposer(app.element, button, request),
+    panels: { "side-chat": (app, area) => toggleT3SideChat(area) },
     isButton: (element) =>
       !string(element, "AXTitle") &&
       children(element).some((child) => string(child, "AXRole") === "AXStaticText"),
@@ -152,7 +171,7 @@ function runCommand(path) {
   } catch (error) {
     return;
   }
-  const key = request.app === "chatgpt" ? "chatgpt" : "t3code";
+  const key = request.app === "chatgpt" || request.app === "claude" ? request.app : "t3code";
   const name = APPS[key].name;
   try {
     const pid = runningPid(key);
@@ -163,6 +182,14 @@ function runCommand(path) {
     const route = area === undefined ? null : APPS[key].route(area.window, area.url);
     if (!route) throw new Error("error:" + name + " shows no chat.");
     if (request.route && request.route !== route) throw new Error("error:The selected task changed before the update.");
+    if (typeof request.panel === "string") {
+      const panels = APPS[key].panels;
+      const panel = Object.prototype.hasOwnProperty.call(panels, request.panel) ? panels[request.panel] : undefined;
+      if (!panel) throw new Error("error:The selected " + name + " shortcut is not available.");
+      panel(app, pageFor(key).area);
+      write({ result: { id: request.id } });
+      return;
+    }
     const composers = currentComposers(key, route, true);
     followFocus(key, app.element, route);
     const page = pageFor(key);
@@ -185,10 +212,14 @@ function runCommand(path) {
 function run(argv) {
   const command = argv[0] + "/command.json";
   const workspace = $.NSWorkspace.sharedWorkspace;
+  // A plug-in restart can end the plug-in without this process. The process
+  // then has a new parent and stops, so that only one watcher runs.
+  const parent = $.getppid();
   let polledAt = 0;
   for (;;) {
     if (files.fileExistsAtPath(command)) runCommand(command);
     if (Date.now() - polledAt >= POLL_INTERVAL * 1000) {
+      if ($.getppid() !== parent) $.exit(0);
       polledAt = Date.now();
       const front = workspace.frontmostApplication;
       const key = appKey(front);
@@ -196,7 +227,7 @@ function run(argv) {
       let page = { composer: null, index: 0, route: null };
       if (ax && APPS[key]) page = readPage(key, front.processIdentifier);
       const running = [];
-      for (const candidate of ["codex", "chatgpt", "t3code"])
+      for (const candidate of ["codex", "chatgpt", "claude", "t3code"])
         if (runningPid(candidate) !== undefined) running.push(candidate);
       emit({ ax, front: key, page, running });
     }

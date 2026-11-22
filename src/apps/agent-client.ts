@@ -1,4 +1,5 @@
 import { isChatGPTHostId, type ChatGPTClient } from "../chatgpt/client";
+import { isClaudeHostId, type ClaudeClient } from "../claude/client";
 import type { CodexDesktopClient } from "../codex/desktop-client";
 import type { CodexState } from "../domain/settings";
 import { isT3HostId, type T3CodeClient } from "../t3code/client";
@@ -9,7 +10,7 @@ type CodexClient = Pick<
   "onChange" | "readState" | "restoreRoute" | "routeRevision" | "update"
 >;
 type ComposerClient = Pick<
-  ChatGPTClient | T3CodeClient,
+  ChatGPTClient | ClaudeClient | T3CodeClient,
   "onChange" | "readState" | "routeRevision" | "update"
 >;
 type Watcher = Pick<FrontAppWatcher, "onChange" | "snapshot">;
@@ -17,14 +18,24 @@ type Watcher = Pick<FrontAppWatcher, "onChange" | "snapshot">;
 /** The longest wait for the first app watcher report after start. */
 const FIRST_REPORT_TIMEOUT = 2000;
 
+export type AgentClients = Readonly<
+  { codex: CodexClient } & Record<Exclude<AgentApp, "codex">, ComposerClient>
+>;
+
+/** The app that owns a task host ID. */
+export function appForHostId(hostId: string): AgentApp {
+  if (isT3HostId(hostId)) return "t3code";
+  if (isChatGPTHostId(hostId)) return "chatgpt";
+  if (isClaudeHostId(hostId)) return "claude";
+  return "codex";
+}
+
 /**
  * Routes key reads and updates to the last frontmost supported app. Codex is
- * the default until ChatGPT or T3 Code comes to the front.
+ * the default until ChatGPT, Claude, or T3 Code comes to the front.
  */
 export class AgentClient {
-  readonly #chatgpt: ComposerClient;
-  readonly #codex: CodexClient;
-  readonly #t3: ComposerClient;
+  readonly #clients: AgentClients;
   readonly #firstReportTimeout: number;
   readonly #watcher: Watcher;
   #app: AgentApp;
@@ -32,16 +43,12 @@ export class AgentClient {
   #switches = 0;
 
   constructor(
-    codex: CodexClient,
-    t3: ComposerClient,
-    chatgpt: ComposerClient,
+    clients: AgentClients,
     watcher: Watcher,
     firstReportTimeout = FIRST_REPORT_TIMEOUT,
   ) {
-    this.#chatgpt = chatgpt;
+    this.#clients = clients;
     this.#firstReportTimeout = firstReportTimeout;
-    this.#codex = codex;
-    this.#t3 = t3;
     this.#watcher = watcher;
     this.#app = watcher.snapshot.app ?? "codex";
     watcher.onChange(() => {
@@ -57,23 +64,21 @@ export class AgentClient {
   }
 
   get routeRevision(): number {
-    return (
-      this.#codex.routeRevision +
-      this.#t3.routeRevision +
-      this.#chatgpt.routeRevision +
-      this.#switches
-    );
+    let revision = this.#switches;
+    for (const client of Object.values(this.#clients))
+      revision += client.routeRevision;
+    return revision;
   }
 
   restoreRoute(value: unknown): void {
-    this.#codex.restoreRoute(value);
+    this.#clients.codex.restoreRoute(value);
   }
 
   onChange(listener: () => void): () => void {
     const removers = [
-      this.#codex.onChange(listener),
-      this.#t3.onChange(listener),
-      this.#chatgpt.onChange(listener),
+      ...Object.values(this.#clients).map((client) =>
+        client.onChange(listener),
+      ),
       this.#watcher.onChange(listener),
     ];
     return () => {
@@ -83,15 +88,14 @@ export class AgentClient {
 
   async readState(): Promise<CodexState> {
     await this.#waitForFirstReport();
-    if (this.#app === "t3code") return this.#t3.readState();
-    if (this.#app === "chatgpt") return this.#chatgpt.readState();
-    return this.#codex.readState();
+    return this.#clients[this.#app].readState();
   }
 
   /**
    * The frontmost app is unknown until the watcher reports once. Without this
-   * wait, a start with ChatGPT or T3 Code in front reads Codex desktop first
-   * and shows a false offline error. After the timeout, Codex is the default.
+   * wait, a start with ChatGPT, Claude, or T3 Code in front reads Codex
+   * desktop first and shows a false offline error. After the timeout, Codex is
+   * the default.
    */
   #waitForFirstReport(): Promise<void> {
     if (this.#watcher.snapshot.started) return Promise.resolve();
@@ -116,11 +120,11 @@ export class AgentClient {
     expectedThreadId: string,
     expectedHostId: string,
   ): Promise<CodexState> {
-    const client = isT3HostId(expectedHostId)
-      ? this.#t3
-      : isChatGPTHostId(expectedHostId)
-        ? this.#chatgpt
-        : this.#codex;
-    return client.update(model, effort, expectedThreadId, expectedHostId);
+    return this.#clients[appForHostId(expectedHostId)].update(
+      model,
+      effort,
+      expectedThreadId,
+      expectedHostId,
+    );
   }
 }

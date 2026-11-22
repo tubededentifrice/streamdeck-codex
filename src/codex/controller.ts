@@ -21,11 +21,12 @@ import {
   renderSingleKey,
 } from "../ui/key-renderer";
 import { styleService } from "../ui/style-service";
-import { AgentClient } from "../apps/agent-client";
+import { AgentClient, appForHostId } from "../apps/agent-client";
 import { frontAppWatcher } from "../apps/front-app-watcher";
-import { ChatGPTClient, isChatGPTHostId } from "../chatgpt/client";
+import { ChatGPTClient } from "../chatgpt/client";
+import { ClaudeClient } from "../claude/client";
 import type { AgentApp } from "../apps/front-app-watcher";
-import { isT3HostId, T3CodeClient } from "../t3code/client";
+import { T3CodeClient } from "../t3code/client";
 import { CodexDesktopClient } from "./desktop-client";
 import { CodexError, isResolvingTaskError } from "./errors";
 
@@ -65,15 +66,18 @@ export class CodexController {
     this.#client =
       client ??
       new AgentClient(
-        new CodexDesktopClient(undefined, (route) => {
-          void styles.saveLastRoute(route).catch(() => {
-            streamDeck.logger.error(
-              "Codex selected-task route could not be saved.",
-            );
-          });
-        }),
-        new T3CodeClient(frontAppWatcher),
-        new ChatGPTClient(frontAppWatcher),
+        {
+          chatgpt: new ChatGPTClient(frontAppWatcher),
+          claude: new ClaudeClient(frontAppWatcher),
+          codex: new CodexDesktopClient(undefined, (route) => {
+            void styles.saveLastRoute(route).catch(() => {
+              streamDeck.logger.error(
+                "Codex selected-task route could not be saved.",
+              );
+            });
+          }),
+          t3code: new T3CodeClient(frontAppWatcher),
+        },
         frontAppWatcher,
       );
   }
@@ -102,11 +106,7 @@ export class CodexController {
     try {
       const state = await this.#client.readState();
       return {
-        app: isT3HostId(state.hostId)
-          ? "t3code"
-          : isChatGPTHostId(state.hostId)
-            ? "chatgpt"
-            : "codex",
+        app: appForHostId(state.hostId),
         effort: state.effort,
         model: state.model,
       };

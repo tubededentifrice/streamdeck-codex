@@ -16,6 +16,12 @@ const CHATGPT: CodexState = {
   model: "gpt-6.2-sol",
   threadId: "Upgrade",
 };
+const CLAUDE: CodexState = {
+  effort: "xhigh",
+  hostId: "claude",
+  model: "claude-opus-5-5",
+  threadId: "/epitaxy/local_c7661ffa-9528-44f3-9751-f373f0b3c28d",
+};
 const T3: CodexState = {
   effort: "high",
   hostId: "t3code:draft",
@@ -49,6 +55,7 @@ function watcher(app: FrontAppSnapshot["app"], started = true) {
       accessibility: true,
       app,
       chatgpt: { composer: undefined, index: 0, route: undefined },
+      claude: { composer: undefined, index: 0, route: undefined },
       started,
       t3code: { composer: undefined, index: 0, route: undefined },
     } as FrontAppSnapshot,
@@ -60,7 +67,15 @@ describe("agent client", () => {
     const codex = client(CODEX);
     const t3 = client(T3);
     const view = watcher(undefined);
-    const agent = new AgentClient(codex, t3, client(CHATGPT), view);
+    const agent = new AgentClient(
+      {
+        chatgpt: client(CHATGPT),
+        claude: client(CLAUDE),
+        codex,
+        t3code: t3,
+      },
+      view,
+    );
 
     await expect(agent.readState()).resolves.toBe(CODEX);
     const revision = agent.routeRevision;
@@ -77,11 +92,16 @@ describe("agent client", () => {
     const codex = client(CODEX);
     const t3 = client(T3);
     const chatgpt = client(CHATGPT);
-    const agent = new AgentClient(codex, t3, chatgpt, watcher("codex"));
+    const claude = client(CLAUDE);
+    const agent = new AgentClient(
+      { chatgpt, claude, codex, t3code: t3 },
+      watcher("codex"),
+    );
 
     await agent.update("claude-opus-5-5", "high", T3.threadId, "t3code:draft");
     await agent.update("gpt-5.6-sol", "high", CODEX.threadId, "local");
     await agent.update("gpt-6.2-sol", "low", "Upgrade", "chatgpt");
+    await agent.update("claude-opus-5-5", "max", CLAUDE.threadId, "claude");
 
     expect(t3.update).toHaveBeenCalledWith(
       "claude-opus-5-5",
@@ -102,14 +122,23 @@ describe("agent client", () => {
       "Upgrade",
       "chatgpt",
     );
+    expect(claude.update).toHaveBeenCalledWith(
+      "claude-opus-5-5",
+      "max",
+      CLAUDE.threadId,
+      "claude",
+    );
   });
 
-  it("reads ChatGPT when ChatGPT comes to the front", async () => {
+  it("reads the composer app that comes to the front", async () => {
     const view = watcher("codex");
     const agent = new AgentClient(
-      client(CODEX),
-      client(T3),
-      client(CHATGPT),
+      {
+        chatgpt: client(CHATGPT),
+        claude: client(CLAUDE),
+        codex: client(CODEX),
+        t3code: client(T3),
+      },
       view,
     );
 
@@ -118,14 +147,19 @@ describe("agent client", () => {
     await expect(agent.readState()).resolves.toBe(CHATGPT);
     view.emit("t3code");
     await expect(agent.readState()).resolves.toBe(T3);
+    view.emit("claude");
+    await expect(agent.readState()).resolves.toBe(CLAUDE);
   });
 
   it("restores only the Codex route", () => {
     const codex = client(CODEX);
     const agent = new AgentClient(
-      codex,
-      client(T3),
-      client(CHATGPT),
+      {
+        chatgpt: client(CHATGPT),
+        claude: client(CLAUDE),
+        codex,
+        t3code: client(T3),
+      },
       watcher(undefined),
     );
 
@@ -138,7 +172,15 @@ describe("agent client", () => {
     const codex = client(CODEX);
     const chatgpt = client(CHATGPT);
     const view = watcher(undefined, false);
-    const agent = new AgentClient(codex, client(T3), chatgpt, view);
+    const agent = new AgentClient(
+      {
+        chatgpt: chatgpt,
+        claude: client(CLAUDE),
+        codex,
+        t3code: client(T3),
+      },
+      view,
+    );
 
     const read = agent.readState();
     await Promise.resolve();
@@ -156,9 +198,12 @@ describe("agent client", () => {
       const codex = client(CODEX);
       const view = watcher(undefined, false);
       const agent = new AgentClient(
-        codex,
-        client(T3),
-        client(CHATGPT),
+        {
+          chatgpt: client(CHATGPT),
+          claude: client(CLAUDE),
+          codex,
+          t3code: client(T3),
+        },
         view,
         2000,
       );

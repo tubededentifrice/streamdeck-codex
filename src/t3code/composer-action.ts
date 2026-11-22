@@ -1,8 +1,9 @@
 import { effortFromLabel, parseComposerLabel } from "./labels";
 
 // JXA functions that set the model and thinking level in the T3 Code
-// composer. The front app watcher runs them, so the window and the model
-// button are already known. They need AX_HELPERS.
+// composer, and that toggle the T3 Code side chat. The front app watcher runs
+// them, so the window and the model button are already known. They need
+// AX_HELPERS.
 export const COMPOSER_ACTION = `
 const effortFromLabel = ${effortFromLabel.toString()};
 const parseComposerLabel = ${parseComposerLabel.toString()};
@@ -97,5 +98,60 @@ function applyComposer(application, button, request) {
     restoreFocus();
   }
   return string(button, "AXDescription") || "";
+}
+// T3 Code has no command for a side chat. A side chat is a surface of the
+// right panel, so the shortcut closes an open side chat, or opens the right
+// panel and adds a side chat to it. The message field of a new side chat gets
+// the focus.
+function toggleT3SideChat(area) {
+  const fail = (message) => {
+    throw new Error("error:" + message);
+  };
+  const described = (role, description) => (e) =>
+    string(e, "AXRole") === role && string(e, "AXDescription") === description;
+  const titled = (role, prefix) => (e) => string(e, "AXRole") === role && (string(e, "AXTitle") || "").startsWith(prefix);
+  const closeButton = () => findInPage(area, described("AXButton", "Close side chat"));
+  const open = closeButton();
+  if (open !== undefined) {
+    if (!press(open)) fail("T3 Code did not close the side chat.");
+    return;
+  }
+  const panel = findInPage(area, (e) => string(e, "AXSubrole") === "AXToggleButton" && string(e, "AXDescription") === "Toggle right panel");
+  if (panel === undefined) fail("The T3 Code side chat is not available here.");
+  const opened = string(panel, "AXValue") !== "1";
+  if (opened) press(panel);
+  const unavailable = () => {
+    if (opened) press(panel);
+    fail("The T3 Code side chat is not available in this thread.");
+  };
+  // An empty right panel shows a "Side chat" button. A panel with other
+  // surfaces adds one through its "Add panel surface" menu.
+  let start;
+  let add;
+  waitFor(() => {
+    start = findInPage(area, titled("AXButton", "Side chat"));
+    add = findInPage(area, described("AXPopUpButton", "Add panel surface"));
+    return start !== undefined || add !== undefined;
+  }, 1.5);
+  if (start === undefined && add !== undefined) {
+    press(add);
+    let menu;
+    waitFor(() => {
+      const list = copy(add, "AXLinkedUIElements");
+      menu = list !== undefined && !list.isNil() && list.isKindOfClass($.NSArray) && list.count > 0 ? list.objectAtIndex(0) : undefined;
+      return menu !== undefined && (start = find(menu, titled("AXMenuItem", "Side chat"))) !== undefined;
+    }, 1);
+    if (start === undefined || string(start, "AXEnabled") === "false") {
+      if (string(add, "AXExpanded") === "true") press(add);
+      unavailable();
+    }
+  }
+  if (start === undefined || string(start, "AXEnabled") === "false") unavailable();
+  press(start);
+  let close;
+  if (!waitFor(() => (close = closeButton()) !== undefined, 1.5)) unavailable();
+  const parent = copy(close, "AXParent");
+  const field = parent === undefined || parent.isNil() ? undefined : find(parent, (e) => string(e, "AXRole") === "AXTextArea");
+  if (field !== undefined) $.AXUIElementSetAttributeValue(field, $("AXFocused"), $.NSNumber.numberWithBool(true));
 }
 `;

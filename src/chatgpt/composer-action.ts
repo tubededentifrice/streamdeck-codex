@@ -23,10 +23,6 @@ const KEY_SPACE = 49;
 function chatgptLabel(button) {
   return string(button, "AXExpanded") === "true" ? undefined : string(button, "AXTitle");
 }
-function postKey(pid, code) {
-  for (const down of [true, false])
-    $.CGEventPostToPid(pid, $.CGEventCreateKeyboardEvent(null, code, down));
-}
 // Returns the final model button title. Throws an Error whose message starts
 // with "error:" for a failure that the user can act on.
 function applyChatGPT(application, pid, button, request) {
@@ -228,5 +224,46 @@ function applyChatGPT(application, pid, button, request) {
   }
   waitFor(() => chatgptLabel(button) !== undefined, 1);
   return chatgptLabel(button) || "";
+}
+const KEY_G = 5;
+// ChatGPT opens the review in a "Changes" tab with Control-Shift-G, but this
+// command does not close the tab. So the review shortcut closes an active
+// Changes tab, and otherwise opens it and confirms that it opened. Chats
+// without a local project have no review. ChatGPT ignores a modified key that
+// goes to its process, so the shortcut brings ChatGPT to the front and types
+// the key with System Events.
+function toggleChatGPTReview(application, pid, area) {
+  const fail = (message) => {
+    throw new Error("error:" + message);
+  };
+  const reviewTab = () =>
+    findInPage(area, (e) => string(e, "AXSubrole") === "AXTabButton" && string(e, "AXTitle") === "Changes");
+  const isActive = (tab) => tab !== undefined && string(tab, "AXValue") === "1";
+  const focused = copy(application, "AXFocusedUIElement");
+  const selection = focused === undefined ? undefined : copy(focused, "AXSelectedTextRange");
+  const restoreFocus = () => {
+    if (focused === undefined || focused.isNil()) return;
+    $.AXUIElementSetAttributeValue(focused, $("AXFocused"), $.NSNumber.numberWithBool(true));
+    if (selection !== undefined && !selection.isNil())
+      $.AXUIElementSetAttributeValue(focused, $("AXSelectedTextRange"), selection);
+  };
+  if (isActive(reviewTab())) {
+    const close = findInPage(area, (e) => string(e, "AXRole") === "AXButton" && string(e, "AXTitle") === "Close Changes tab");
+    if (close === undefined) fail("ChatGPT shows no Close Changes tab button.");
+    // Space must go only to the close button, never to a message field.
+    $.AXUIElementSetAttributeValue(close, $("AXFocused"), $.NSNumber.numberWithBool(true));
+    if (!waitFor(() => string(close, "AXFocused") === "true", 0.5)) fail("ChatGPT did not accept the keyboard focus.");
+    postKey(pid, KEY_SPACE);
+    const closed = waitFor(() => reviewTab() === undefined, 1.5);
+    restoreFocus();
+    if (!closed) fail("ChatGPT did not close the Changes tab.");
+    return;
+  }
+  Application(CODEX).activate();
+  const front = () => $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier === pid;
+  if (!waitFor(front, 1)) fail("ChatGPT did not come to the front.");
+  pause(0.1);
+  Application("System Events").keyCode(KEY_G, { using: ["control down", "shift down"] });
+  if (!waitFor(() => isActive(reviewTab()), 1.5)) fail("The ChatGPT review panel is not available in this chat.");
 }
 `;

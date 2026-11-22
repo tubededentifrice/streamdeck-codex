@@ -7,12 +7,16 @@ export const AX_HELPERS = String.raw`
 ObjC.import("AppKit");
 ObjC.import("ApplicationServices");
 ObjC.import("CoreGraphics");
+ObjC.import("stdlib");
+ObjC.bindFunction("getppid", ["int", []]);
 ObjC.bindFunction("AXUIElementCreateApplication", ["id", ["int"]]);
 ObjC.bindFunction("AXUIElementCopyAttributeValue", ["int", ["id", "id", "id *"]]);
 ObjC.bindFunction("AXUIElementSetAttributeValue", ["int", ["id", "id", "id"]]);
 ObjC.bindFunction("AXUIElementPerformAction", ["int", ["id", "id"]]);
 const T3 = "com.t3tools.t3code";
 const CODEX = "com.openai.codex";
+const CLAUDE = "com.anthropic.claudefordesktop";
+const BUNDLES = { chatgpt: CODEX, claude: CLAUDE, codex: CODEX, t3code: T3 };
 function copy(element, name) {
   const ref = Ref();
   return $.AXUIElementCopyAttributeValue(element, $(name), ref) === 0 ? ref[0] : undefined;
@@ -39,6 +43,11 @@ function pause(seconds) {
 function press(element) {
   return $.AXUIElementPerformAction(element, $("AXPress")) === 0;
 }
+// Sends a key without modifiers to the process, also when the app is in the
+// background. The key goes to the element that has the focus in the app.
+function postKey(pid, code) {
+  for (const down of [true, false]) $.CGEventPostToPid(pid, $.CGEventCreateKeyboardEvent(null, code, down));
+}
 const normalizeLabel = ${normalizeLabel.toString()};
 function find(root, test) {
   let found;
@@ -61,6 +70,21 @@ function findAll(root, test) {
   })(root, 0);
   return found;
 }
+// Like find, but a long list, such as the messages of a thread, is searched
+// only in its last items. Use it for controls outside the messages.
+function findInPage(root, test) {
+  let found;
+  (function walk(element, depth) {
+    if (found || depth > 60) return;
+    if (test(element)) {
+      found = element;
+      return;
+    }
+    const list = children(element);
+    for (const child of list.length > 25 ? list.slice(-3) : list) walk(child, depth + 1);
+  })(root, 0);
+  return found;
+}
 function waitFor(test, seconds) {
   const end = Date.now() + seconds * 1000;
   for (;;) {
@@ -78,11 +102,12 @@ function appKey(app) {
   if (app.isNil()) return null;
   const bundle = app.bundleIdentifier.isNil() ? "" : app.bundleIdentifier.js;
   if (bundle === T3) return "t3code";
+  if (bundle === CLAUDE) return "claude";
   if (bundle === CODEX) return isChatGPT(app) ? "chatgpt" : "codex";
   return null;
 }
 function runningPid(key) {
-  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(key === "t3code" ? T3 : CODEX);
+  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(BUNDLES[key]);
   for (let index = 0; index < apps.count; index += 1) {
     const app = apps.objectAtIndex(index);
     if (appKey(app) === key) return app.processIdentifier;

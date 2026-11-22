@@ -53,7 +53,7 @@ describe("Codex shortcut launcher", () => {
       throw new Error("denied");
     });
 
-    await expect(launcher.open("review", "chatgpt")).rejects.toThrow(
+    await expect(launcher.open("terminal", "chatgpt")).rejects.toThrow(
       "ChatGPT could not run the shortcut.",
     );
   });
@@ -116,16 +116,49 @@ describe("T3 Code shortcut launcher", () => {
     );
   });
 
-  it("reports a shortcut that T3 Code does not have", async () => {
-    const { execute, value } = launcher();
-
-    await expect(value.open("side-chat", "t3code")).rejects.toThrow(
-      "The selected T3 Code shortcut is not available.",
-    );
-    expect(execute).not.toHaveBeenCalled();
-  });
-
   it.each(["mod+f13", "hyper+j", ""])("rejects the %s binding", (binding) => {
     expect(parseT3Binding(binding)).toBeUndefined();
+  });
+
+  it.each([
+    ["claude", "review"],
+    ["claude", "terminal"],
+    ["claude", "browser"],
+    ["claude", "files"],
+    ["claude", "side-chat"],
+    ["chatgpt", "review"],
+    ["t3code", "side-chat"],
+  ] as const)(
+    "toggles the %s %s panel in the window",
+    async (app, shortcut) => {
+      const execute = vi.fn(async (file: string, args: readonly string[]) => {
+        void file;
+        void args;
+      });
+      const togglePanel = vi.fn(async () => undefined);
+      const launcher = new ShortcutLauncher(execute, { togglePanel });
+
+      await launcher.open(shortcut, app);
+
+      expect(togglePanel).toHaveBeenCalledWith({ app, panel: shortcut });
+      expect(execute).toHaveBeenCalledOnce();
+      expect(execute.mock.calls[0][1][1]).toMatch(
+        /^tell application id "[^"]+" to activate$/,
+      );
+    },
+  );
+
+  it("does not show the app when the panel is missing", async () => {
+    const execute = vi.fn(async () => undefined);
+    const launcher = new ShortcutLauncher(execute, {
+      togglePanel: async () => {
+        throw new Error("The Claude Changes panel is not available here.");
+      },
+    });
+
+    await expect(launcher.open("review", "claude")).rejects.toThrow(
+      "The Claude Changes panel is not available here.",
+    );
+    expect(execute).not.toHaveBeenCalled();
   });
 });

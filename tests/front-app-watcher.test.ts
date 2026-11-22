@@ -32,6 +32,7 @@ describe("front app watcher", () => {
       accessibility: true,
       app: "t3code",
       chatgpt: EMPTY,
+      claude: EMPTY,
       started: true,
       t3code: { composer: "GPT-6.2-Sol, High", index: 0, route: URL },
     });
@@ -70,6 +71,36 @@ describe("front app watcher", () => {
     });
   });
 
+  it("keeps the Claude page apart from the other pages", () => {
+    const watcher = new FrontAppWatcher();
+    const listener = vi.fn();
+    watcher.onChange(listener);
+    watcher.apply(
+      line({
+        ax: true,
+        front: "claude",
+        page: {
+          composer: "Opus 5.5, High",
+          index: 0,
+          route: "https://claude.ai/epitaxy",
+        },
+      }),
+    );
+    watcher.apply(line({ ax: true, front: "codex", page: null }));
+
+    expect(watcher.snapshot).toMatchObject({
+      app: "codex",
+      chatgpt: EMPTY,
+      claude: {
+        composer: "Opus 5.5, High",
+        index: 0,
+        route: "https://claude.ai/epitaxy",
+      },
+      t3code: EMPTY,
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the only running app before one comes to the front", () => {
     const watcher = new FrontAppWatcher();
 
@@ -77,6 +108,8 @@ describe("front app watcher", () => {
     expect(watcher.snapshot.app).toBe("t3code");
     watcher.apply(line({ ax: false, front: null, running: ["chatgpt"] }));
     expect(watcher.snapshot.app).toBe("chatgpt");
+    watcher.apply(line({ ax: false, front: null, running: ["claude"] }));
+    expect(watcher.snapshot.app).toBe("claude");
 
     const both = new FrontAppWatcher();
     both.apply(line({ ax: false, front: null, running: ["codex", "t3code"] }));
@@ -285,6 +318,35 @@ describe("front app watcher commands", () => {
     await expect(result).resolves.toBe("GPT-6.2 Sol Light");
     expect(watcher.snapshot.chatgpt.composer).toBe("GPT-6.2 Sol Light");
     expect(watcher.snapshot.t3code.composer).toBeUndefined();
+    watcher.stop();
+  });
+
+  it("toggles a Claude panel and keeps the Claude label", async () => {
+    const { args, children, watcher } = started();
+    const result = watcher.runPanel({ app: "claude", panel: "terminal" });
+    const command = JSON.parse(
+      fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
+    );
+    expect(command).toMatchObject({ app: "claude", panel: "terminal" });
+
+    children[0].stdout.write(`${line({ result: { id: command.id } })}\n`);
+    await expect(result).resolves.toBeUndefined();
+    expect(watcher.snapshot.claude).toEqual(EMPTY);
+    watcher.stop();
+  });
+
+  it("rejects a Claude panel that the page does not show", async () => {
+    const { args, children, watcher } = started();
+    const result = watcher.runPanel({ app: "claude", panel: "review" });
+    const { id } = JSON.parse(
+      fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
+    );
+    children[0].stdout.write(
+      `${line({ result: { error: "The Claude Changes panel is not available here.", id } })}\n`,
+    );
+    await expect(result).rejects.toThrow(
+      "The Claude Changes panel is not available here.",
+    );
     watcher.stop();
   });
 });
