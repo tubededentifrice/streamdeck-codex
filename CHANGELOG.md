@@ -9,6 +9,8 @@ This file records the user-visible changes in Codex Controls.
   thinking level is at most 80% of the model size. The title and the next value
   stay 2 pixels from the border. Clear **Fit text to key** to set the text
   sizes.
+- Show app-neutral error labels: **APP OFFLINE** for every app, and **SELECT
+  CHAT** and **CHAT UNREADY** for chat state errors.
 - Show the next value at the bottom of the key, in a larger font, without the
   NEXT or SET prefix, the divider, or the dot. A Preset key shows the next
   model and thinking level on two lines.

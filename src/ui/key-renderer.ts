@@ -550,17 +550,13 @@ export function renderError(
   if (code === "resolving-task")
     return renderLoading(kind, "NOT IN ACTIVE CHAT", display);
 
-  const app =
-    error && typeof error === "object" && "app" in error
-      ? error.app
-      : undefined;
   const short =
     code === "accessibility"
       ? "ALLOW ACCESS"
       : code === "select-task" || message.includes("Select a task")
-        ? "SELECT TASK"
+        ? "SELECT CHAT"
         : code === "task-state-unavailable"
-          ? "TASK UNREADY"
+          ? "CHAT UNREADY"
           : kind === "shortcut" && message.includes("not available")
             ? "UNAVAILABLE"
             : message.includes("choice") ||
@@ -570,13 +566,7 @@ export function renderError(
                 ? kind === "shortcut"
                   ? "OPEN FAILED"
                   : "UPDATE FAILED"
-                : app === "t3code"
-                  ? "T3 OFFLINE"
-                  : app === "chatgpt"
-                    ? "CHATGPT OFFLINE"
-                    : app === "claude"
-                      ? "CLAUDE OFFLINE"
-                      : "CODEX OFFLINE";
+                : "APP OFFLINE";
   const showKind = display.showTitle === true;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
   const kindMarkup = showKind

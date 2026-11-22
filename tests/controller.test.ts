@@ -144,7 +144,7 @@ describe("Codex controller refresh", () => {
     await staleRefresh;
 
     expect(images.at(-1)).toContain("%3ESOL%3C");
-    expect(images.join("\n")).not.toContain("CODEX%20OFFLINE");
+    expect(images.join("\n")).not.toContain("APP%20OFFLINE");
   });
 
   it("does not let an old remote update overwrite a new local route", async () => {

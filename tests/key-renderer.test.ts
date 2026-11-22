@@ -417,11 +417,11 @@ describe("key renderer", () => {
         { showTitle: true },
       ),
     );
-    expect(image).toContain("CODEX OFFLINE");
+    expect(image).toContain("APP OFFLINE");
     expect(image).not.toContain("/tmp/private");
     expect(image).toMatch(/y="63\.33"[^>]*font-size="28"[^>]*>!<\/text>/);
     expect(image).toMatch(
-      /y="83\.7"[^>]*font-size="15"[^>]*>CODEX OFFLINE<\/text>/,
+      /y="83\.7"[^>]*font-size="15"[^>]*>APP OFFLINE<\/text>/,
     );
     expect(image).toMatch(/y="100\.65"[^>]*font-size="10"[^>]*>PRESET<\/text>/);
   });
@@ -442,7 +442,7 @@ describe("key renderer", () => {
           new CodexError("task-state-unavailable", "Private task state."),
         ),
       ),
-    ).toContain("TASK UNREADY");
+    ).toContain("CHAT UNREADY");
     expect(
       decodeURIComponent(
         renderError("preset", new Error("Remote update failed."), "update"),
@@ -459,17 +459,17 @@ describe("key renderer", () => {
     [
       new CodexError("offline", "Private.", { app: "t3code" }),
       "refresh",
-      "T3 OFFLINE",
+      "APP OFFLINE",
     ],
     [
       new CodexError("offline", "Private.", { app: "claude" }),
       "refresh",
-      "CLAUDE OFFLINE",
+      "APP OFFLINE",
     ],
     [
       new CodexError("offline", "Private.", { app: "t3code" }),
       "update",
-      "T3 OFFLINE",
+      "APP OFFLINE",
     ],
   ] as const)("labels the T3 Code %s error", (error, context, label) => {
     const image = decodeURIComponent(renderError("model", error, context));
