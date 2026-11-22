@@ -8,24 +8,31 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import {
-  choicesFor,
-  defaultsFor,
-  displayChoice,
-  nextChoice,
-  SHORTCUT_OPTIONS,
-} from "../src/domain/settings.ts";
-import {
-  activeStyleFor,
-  BUILT_IN_STYLES,
-  resolveStyleById,
-} from "../src/domain/styles.ts";
-import { renderKey, renderShortcutKey } from "../src/ui/key-renderer.ts";
+// The TypeScript sources use extensionless relative imports for the bundler.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    try {
+      return nextResolve(specifier, context);
+    } catch (error) {
+      if (!specifier.startsWith(".") || error?.code !== "ERR_MODULE_NOT_FOUND")
+        throw error;
+      return nextResolve(`${specifier}.ts`, context);
+    }
+  },
+});
+
+const { choicesFor, defaultsFor, displayChoice, nextChoice, SHORTCUT_OPTIONS } =
+  await import("../src/domain/settings.ts");
+const { activeStyleFor, BUILT_IN_STYLES, resolveStyleById } =
+  await import("../src/domain/styles.ts");
+const { renderKey, renderShortcutKey } =
+  await import("../src/ui/key-renderer.ts");
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginImages = join(
@@ -55,6 +62,13 @@ const browserCandidates = [
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
 ].filter(Boolean);
 
+if (
+  !existsSync(
+    join(root, "com.courcelle.codex-controls.sdPlugin", "bin", "preview.js"),
+  )
+)
+  throw new Error("Run npm run build before you generate the images.");
+
 mkdirSync(sourceDirectory, { recursive: true });
 mkdirSync(imageDirectory, { recursive: true });
 
@@ -77,21 +91,11 @@ function innerSvg(svg) {
 
 function keyFor(kind, codexState) {
   const settings = defaultsFor(kind);
-  const choices = choicesFor(kind, settings);
   const current = displayChoice(kind, settings, codexState);
   const next = nextChoice(kind, settings, codexState);
   const style = activeStyleFor(kind, settings, codexState);
   return decodeSvg(
-    renderKey(
-      kind,
-      codexState,
-      next,
-      choices.length,
-      style,
-      undefined,
-      settings,
-      current,
-    ),
+    renderKey(kind, codexState, next, style, undefined, settings, current),
   );
 }
 
@@ -438,8 +442,8 @@ const shortcuts = shell(
   <text x="1763" y="632" text-anchor="middle" fill="#91A0B8" font-size="14" font-weight="700" letter-spacing="2">SIDE CHAT</text>
   <rect x="780" y="742" width="970" height="92" rx="24" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.1"/>
   <circle cx="824" cy="788" r="8" fill="#34D399"/>
-  <text x="850" y="782" fill="#F3F6FC" font-size="20" font-weight="700">Default display: title shown and shortcut text at 18 px</text>
-  <text x="850" y="810" fill="#9EABC0" font-size="17">The current renderer controls the font size and vertical alignment.</text>`,
+  <text x="850" y="782" fill="#F3F6FC" font-size="20" font-weight="700">Default display: text fitted to the key</text>
+  <text x="850" y="810" fill="#9EABC0" font-size="17">Each label takes the largest size that fits.</text>`,
 );
 
 function writeSvg(name, content) {

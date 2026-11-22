@@ -29,9 +29,10 @@ describe("choice settings", () => {
       },
     ]);
     expect(defaultsFor("model")).toMatchObject({
+      fitText: true,
       modelFontSize: 21,
       showNext: true,
-      showTitle: true,
+      showTitle: false,
     });
     expect(defaultsFor("preset")).toMatchObject({
       modelFontSize: 21,
@@ -40,9 +41,22 @@ describe("choice settings", () => {
     expect(defaultsFor("shortcut")).toMatchObject({
       shortcutFontSize: 18,
       showNext: false,
-      showTitle: true,
+      showTitle: false,
     });
     expect(choicesFor("preset", defaultsFor("preset"))[0].label).toBe("Sol");
+  });
+
+  it("names a value without a label from its model id", () => {
+    expect(
+      choicesFor("model", {
+        models: [{ label: "", model: "claude-opus-5-5" }],
+      }),
+    ).toEqual([{ label: "Opus 5.5", model: "claude-opus-5-5" }]);
+    expect(
+      choicesFor("preset", {
+        presets: [{ effort: "high", label: " ", model: "glm-5-3" }],
+      }),
+    ).toEqual([{ effort: "high", label: "Glm 5.3", model: "glm-5-3" }]);
   });
 
   it("accepts each supported shortcut as the only configured command", () => {
@@ -177,7 +191,7 @@ describe("choice settings", () => {
     expect(defaultsFor("single")).toMatchObject({
       inactiveFade: 75,
       showNext: false,
-      showTitle: true,
+      showTitle: false,
     });
     expect(choicesFor("single", defaultsFor("single"))).toEqual([
       {

@@ -53,4 +53,22 @@ const config = {
   ],
 };
 
-export default config;
+/**
+ * The key renderer for the property inspector previews.
+ * @type {import('rollup').RollupOptions}
+ */
+const preview = {
+  input: "src/ui/preview.ts",
+  output: {
+    file: `${sdPlugin}/bin/preview.js`,
+    format: "iife",
+    name: "CodexPreview",
+  },
+  plugins: [
+    typescript(),
+    nodeResolve({ browser: true }),
+    !isWatching && terser(),
+  ],
+};
+
+export default [config, preview];

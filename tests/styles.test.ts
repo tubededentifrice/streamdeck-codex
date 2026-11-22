@@ -6,6 +6,7 @@ import {
   NEUTRAL_STYLE,
   resolveStyleById,
   sanitizeCustomStyles,
+  STYLE_CYCLE,
 } from "../src/domain/styles";
 
 const customStyle = {
@@ -37,24 +38,34 @@ describe("key styles", () => {
   it("provides 16 immutable built-in styles", () => {
     expect(BUILT_IN_STYLES).toHaveLength(16);
     expect(BUILT_IN_STYLES.map((style) => style.id)).toEqual([
-      "builtin:ocean",
-      "builtin:azure",
-      "builtin:indigo",
-      "builtin:violet",
       "builtin:plum",
       "builtin:rose",
+      "builtin:crimson",
       "builtin:coral",
       "builtin:amber",
+      "builtin:gold",
       "builtin:lime",
       "builtin:emerald",
       "builtin:teal",
       "builtin:cyan",
+      "builtin:ocean",
+      "builtin:azure",
+      "builtin:indigo",
+      "builtin:violet",
       "builtin:slate",
       "builtin:silver",
-      "builtin:crimson",
-      "builtin:gold",
     ]);
     expect(Object.isFrozen(BUILT_IN_STYLES)).toBe(true);
+    expect([...STYLE_CYCLE].sort()).toEqual(
+      BUILT_IN_STYLES.map((style) => style.id).sort(),
+    );
+    // New values keep the color order of earlier releases.
+    expect(STYLE_CYCLE.slice(0, 4)).toEqual([
+      "builtin:ocean",
+      "builtin:azure",
+      "builtin:indigo",
+      "builtin:violet",
+    ]);
     expect(BUILT_IN_STYLES.every(Object.isFrozen)).toBe(true);
   });
 
@@ -69,22 +80,22 @@ describe("key styles", () => {
         ],
       ),
     ).toEqual([
-      ["Ocean", "#38BDF8", "#082F49", "#F0F9FF"],
-      ["Azure", "#60A5FA", "#172554", "#EFF6FF"],
-      ["Indigo", "#818CF8", "#1E1B4B", "#EEF2FF"],
-      ["Violet", "#A78BFA", "#2E1065", "#F5F3FF"],
       ["Plum", "#E879F9", "#4A044E", "#FDF4FF"],
       ["Rose", "#FB7185", "#4C0519", "#FFF1F2"],
+      ["Crimson", "#F43F5E", "#3F0712", "#FFF1F2"],
       ["Coral", "#F97316", "#431407", "#FFF7ED"],
       ["Amber", "#FBBF24", "#451A03", "#FFFBEB"],
+      ["Gold", "#FACC15", "#422006", "#FEFCE8"],
       ["Lime", "#A3E635", "#1A2E05", "#F7FEE7"],
       ["Emerald", "#34D399", "#022C22", "#ECFDF5"],
       ["Teal", "#2DD4BF", "#042F2E", "#F0FDFA"],
       ["Cyan", "#22D3EE", "#083344", "#ECFEFF"],
+      ["Ocean", "#38BDF8", "#082F49", "#F0F9FF"],
+      ["Azure", "#60A5FA", "#172554", "#EFF6FF"],
+      ["Indigo", "#818CF8", "#1E1B4B", "#EEF2FF"],
+      ["Violet", "#A78BFA", "#2E1065", "#F5F3FF"],
       ["Slate", "#94A3B8", "#0F172A", "#F8FAFC"],
       ["Silver", "#D1D5DB", "#1F2937", "#F9FAFB"],
-      ["Crimson", "#F43F5E", "#3F0712", "#FFF1F2"],
-      ["Gold", "#FACC15", "#422006", "#FEFCE8"],
     ]);
     expect(NEUTRAL_STYLE).toEqual({
       backgroundColor: "#303030",

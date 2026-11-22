@@ -32,8 +32,8 @@ remote task values, but this release does not change them. You do not need to
 add host settings to the plug-in.
 
 Choose from 16 included color presets or save your own shared color presets.
-You can also hide the title, hide the next value on setting keys, and change
-the text size.
+Text fits the key by default. You can also show the title, hide the next value
+on setting keys, and set the text size.
 
 A local change applies to the selected task's next turn. It does not change a
 turn that is already in progress.
@@ -48,7 +48,7 @@ turn that is already in progress.
 - Automatic local and remote task detection.
 - 16 included color presets.
 - Shared custom color presets.
-- Adjustable title and text-size options.
+- Text that fits the key, with optional title and text sizes.
 - Adjustable next-value option on setting keys.
 
 ## Search terms

@@ -18,6 +18,10 @@
           <input id="show-title" type="checkbox" />
           Show the action title
         </label>
+        <label>
+          <input id="fit-text" type="checkbox" />
+          Fit text to key
+        </label>
         <label id="show-next-row">
           <input id="show-next" type="checkbox" />
           Show the next value
@@ -41,6 +45,7 @@
         </label>
       </fieldset>
       <div id="choices" aria-live="polite"></div>
+      <div id="suggestions" class="suggestions" hidden></div>
       <div class="add-row">
         <code id="current" hidden></code>
         <button id="add" type="button">Add value</button>
@@ -67,6 +72,7 @@
         <p id="style-error" role="alert"></p>
       </details>
     </main>
+    <script src="../bin/preview.js"></script>
     <script src="action.js"></script>
   </body>
 </html>

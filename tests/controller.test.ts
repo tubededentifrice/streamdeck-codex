@@ -252,6 +252,25 @@ describe("Codex controller single preset", () => {
     expect(decodeURIComponent(images.at(-1)!)).toContain('stroke="#A78BFA"');
   });
 
+  it("lists the models that tasks used, newest first", async () => {
+    const state = { current: LOCAL };
+    const client = staticClient(state);
+    const controller = new CodexController(client, fakeStyles());
+    const { action } = fakeAction();
+    await controller.show(action, "single", settings);
+    state.current = REMOTE;
+    expect(await controller.currentState()).toEqual({
+      app: "codex",
+      effort: "high",
+      model: "gpt-5.6-luna",
+      models: ["gpt-5.6-luna", "gpt-5.6-sol"],
+    });
+    client.readState.mockRejectedValueOnce(new Error("Offline."));
+    expect(await controller.currentState()).toEqual({
+      models: ["gpt-5.6-luna", "gpt-5.6-sol"],
+    });
+  });
+
   it("asks for valid settings when the preset is not valid", async () => {
     const state = { current: LOCAL };
     const controller = new CodexController(staticClient(state), fakeStyles());

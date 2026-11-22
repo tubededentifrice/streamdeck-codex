@@ -8,6 +8,8 @@
   let saveTimer;
   let styleCatalog = { builtInStyles: [], customStyles: [] };
   let currentState;
+  let recentModels = [];
+  let suggestionKey;
   const defaults = {
     model: [
       { label: "Sol", model: "gpt-5.6-sol", styleId: "builtin:ocean" },
@@ -73,6 +75,7 @@
     "max",
     "ultra",
   ];
+  // The order in which new values take colors. Same as STYLE_CYCLE.
   const builtInStyleIds = [
     "builtin:ocean",
     "builtin:azure",
@@ -166,7 +169,11 @@
           typeof message.payload.effort === "string"
             ? message.payload
             : undefined;
+        recentModels = Array.isArray(message.payload.models)
+          ? message.payload.models.filter((model) => typeof model === "string")
+          : [];
         renderCurrent();
+        renderSuggestions();
         return;
       }
       if (message.payload?.type === "styles/catalog") {
@@ -218,14 +225,7 @@
     return effort ? effort[0].toUpperCase() + effort.slice(1) : "";
   }
 
-  function modelLabel(model) {
-    const gpt = /^gpt-([0-9.]+)-(.+)$/.exec(model);
-    if (gpt) return `${gpt[2][0].toUpperCase()}${gpt[2].slice(1)} ${gpt[1]}`;
-    const claude = /^claude-([a-z]+)-([0-9-]+)$/.exec(model);
-    if (claude)
-      return `${claude[1][0].toUpperCase()}${claude[1].slice(1)} ${claude[2].replaceAll("-", ".")}`;
-    return model;
-  }
+  const modelLabel = (model) => window.CodexPreview.modelLabel(model);
 
   function currentText() {
     if (!currentState) return "";
@@ -303,10 +303,17 @@
     input.value = value[field] || "";
     input.placeholder = placeholder;
     input.maxLength = field === "label" ? 32 : 128;
-    input.required = true;
+    input.required = field !== "label" || kind === "shortcut";
+    input.dataset.field = field;
     input.addEventListener("input", () => {
       value[field] = input.value;
-      refreshPreviewText();
+      if (field === "model") {
+        const labelInput = row.parentElement?.querySelector(
+          'input[data-field="label"]',
+        );
+        if (labelInput) labelInput.placeholder = modelLabel(input.value);
+      }
+      refreshPreviews();
       save();
     });
     if (field === "model")
@@ -335,7 +342,7 @@
     }
     select.addEventListener("change", () => {
       value.effort = select.value;
-      refreshPreviewText();
+      refreshPreviews();
       save();
       shareValue(value);
     });
@@ -380,8 +387,9 @@
   }
 
   function renderDisplayOptions() {
-    document.querySelector("#show-title").checked =
-      settings.showTitle !== false;
+    document.querySelector("#show-title").checked = settings.showTitle === true;
+    const fit = settings.fitText !== false;
+    document.querySelector("#fit-text").checked = fit;
     document.querySelector("#show-next").checked = settings.showNext !== false;
     document.querySelector("#show-next-row").hidden = singleValue();
     document.querySelector("#fade-row").hidden = kind !== "single";
@@ -391,9 +399,9 @@
     const modelFontRow = document.querySelector("#model-font-row");
     const thinkingFontRow = document.querySelector("#thinking-font-row");
     const shortcutFontRow = document.querySelector("#shortcut-font-row");
-    modelFontRow.hidden = kind === "thinking" || kind === "shortcut";
-    thinkingFontRow.hidden = kind === "model" || kind === "shortcut";
-    shortcutFontRow.hidden = kind !== "shortcut";
+    modelFontRow.hidden = fit || kind === "thinking" || kind === "shortcut";
+    thinkingFontRow.hidden = fit || kind === "model" || kind === "shortcut";
+    shortcutFontRow.hidden = fit || kind !== "shortcut";
     document.querySelector("#model-font-size").value = validFontSize(
       settings.modelFontSize,
       21,
@@ -419,244 +427,99 @@
       : 75;
   }
 
-  // Mixes a #RRGGBB color toward black, as the unlit key around it.
-  function fadeColor(color, fade) {
-    const match = /^#([0-9a-f]{6})$/i.exec(color);
-    if (!match || fade === 0) return color;
-    const value = Number.parseInt(match[1], 16);
-    const keep = 1 - fade / 100;
-    return `#${[16, 8, 0]
-      .map((shift) =>
-        Math.round(((value >> shift) & 0xff) * keep)
-          .toString(16)
-          .padStart(2, "0"),
-      )
-      .join("")}`;
-  }
-
   function validFontSize(value, fallback) {
     return Number.isFinite(value)
       ? Math.max(10, Math.min(48, Math.round(value)))
       : fallback;
   }
 
-  function keyLayout(showTitle, showNext, primaryFontSize, secondaryFontSize) {
-    const titleHeight = 15 * 0.7;
-    const primaryHeight = primaryFontSize * 0.7;
-    const secondaryHeight =
-      secondaryFontSize === undefined ? 0 : secondaryFontSize * 0.7;
-    const valueGap =
-      secondaryFontSize === undefined
-        ? 0
-        : Math.min(
-            4,
-            Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
-          );
-    const valueHeight = primaryHeight + valueGap + secondaryHeight;
-    const footerHeight = 30;
-    const sectionCount = 1 + Number(showTitle) + Number(showNext);
-    const fixedHeight =
-      valueHeight +
-      (showTitle ? titleHeight : 0) +
-      (showNext ? footerHeight : 0);
-    const sectionGap =
-      sectionCount === 1
-        ? 0
-        : Math.max(4, Math.min(22, (128 - fixedHeight) / (sectionCount - 1)));
-    const totalHeight = fixedHeight + (sectionCount - 1) * sectionGap;
-    let top = 72 - totalHeight / 2;
-    let headerCenter;
-    if (showTitle) {
-      headerCenter = top + titleHeight / 2;
-      top += titleHeight + sectionGap;
-    }
-    const primaryCenter = top + primaryHeight / 2;
-    const secondaryCenter =
-      secondaryFontSize === undefined
-        ? undefined
-        : top + primaryHeight + valueGap + secondaryHeight / 2;
-    top += valueHeight;
+  const fallbackStyle = {
+    backgroundColor: "#303030",
+    borderColor: "#A3A3A3",
+    fontColor: "#F5F5F5",
+  };
+
+  function withDefaults(value) {
+    const model = value?.model || "";
     return {
-      footerTop: showNext ? top + sectionGap : undefined,
-      headerCenter,
-      primaryCenter,
-      secondaryCenter,
+      effort: value?.effort || "medium",
+      label: value?.label || (model ? modelLabel(model) : "Model"),
+      model,
     };
   }
 
-  function shortcutLayout(labelSize, showTitle) {
-    const titleHeight = 15 * 0.7;
-    const iconHeight = 56;
-    const labelHeight = labelSize * 0.7;
-    const totalHeight =
-      iconHeight + labelHeight + 4 + (showTitle ? titleHeight + 6 : 0);
-    let top = 72 - totalHeight / 2;
-    const headerCenter = showTitle ? top + titleHeight / 2 : undefined;
-    if (showTitle) top += titleHeight + 6;
-    const iconCenter = top + iconHeight / 2;
-    top += iconHeight + 4;
-    return {
-      headerCenter,
-      iconOffset: iconCenter - 62,
-      labelCenter: top + labelHeight / 2,
-    };
-  }
-
-  function shortcutIconMarkup(shortcut, color, background) {
-    if (shortcut === "terminal")
-      return `<polygon points="47,47 66,62 47,77 47,69 57,62 47,55" fill="${color}"/><rect x="67" y="74" width="28" height="6" rx="3" fill="${color}"/>`;
-    if (shortcut === "browser")
-      return `<circle cx="72" cy="62" r="26" fill="${color}"/><circle cx="72" cy="62" r="20" fill="${background}"/><ellipse cx="72" cy="62" rx="10" ry="23" fill="${color}"/><ellipse cx="72" cy="62" rx="6" ry="20" fill="${background}"/><rect x="47" y="60" width="50" height="4" fill="${color}"/>`;
-    if (shortcut === "files")
-      return `<polygon points="40,48 65,48 72,55 104,55 104,87 40,87" fill="${color}"/><rect x="46" y="62" width="52" height="19" rx="2" fill="${background}"/>`;
-    if (shortcut === "side-chat")
-      return `<polygon points="40,43 89,43 89,75 60,75 46,86 46,75 40,75" fill="${color}"/><polygon points="70,57 104,57 104,83 91,83 79,92 79,83 70,83" fill="${color}"/><rect x="75" y="62" width="24" height="16" rx="2" fill="${background}"/>`;
-    return `<rect x="41" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="74" y="46" width="29" height="35" rx="3" fill="${color}"/><rect x="47" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="47" y="63" width="12" height="4" rx="2" fill="${background}"/><rect x="80" y="54" width="17" height="4" rx="2" fill="${background}"/><rect x="80" y="63" width="12" height="4" rx="2" fill="${background}"/>`;
-  }
-
-  function previewTarget(index) {
+  // Draws a value with the plug-in key renderer, as the key shows it while the
+  // task uses that value. `inactive` shows a Single Preset key while the task
+  // uses other values.
+  function previewImage(value, style, inactive) {
+    const preview = window.CodexPreview;
+    const keyStyle = style || fallbackStyle;
+    if (kind === "shortcut")
+      return preview.renderShortcutKey(
+        {
+          label: value.label || "Review",
+          shortcut: value.shortcut || "review",
+        },
+        keyStyle,
+        undefined,
+        settings,
+      );
+    const current = withDefaults(value);
+    if (kind === "single")
+      return preview.renderSingleKey(
+        current,
+        !inactive,
+        keyStyle,
+        undefined,
+        settings,
+      );
     const cycle = values().filter(isEnabled);
-    const position = cycle.indexOf(values()[index]);
+    const position = cycle.indexOf(value);
     const target =
       cycle.length > 1 && position >= 0
         ? cycle[(position + 1) % cycle.length]
         : cycle[0];
-    if (!target) return "NO CHOICES";
-    const prefix = cycle.length > 1 ? "NEXT" : "SET";
-    const label =
-      kind === "thinking"
-        ? target.effort || "medium"
-        : kind === "preset"
-          ? `${target.label || "MODEL"} / ${target.effort || "medium"}`
-          : target.label || "MODEL";
-    return `${prefix}  ${label}`.toUpperCase().slice(0, 28);
+    return preview.renderKey(
+      kind,
+      {
+        effort: current.effort,
+        hostId: "",
+        model: current.model,
+        threadId: "",
+      },
+      target && withDefaults(target),
+      keyStyle,
+      undefined,
+      settings,
+      current,
+    );
   }
 
-  function previewPrimary(value) {
-    return (
-      kind === "thinking"
-        ? value.effort || "medium"
-        : value.label || (kind === "shortcut" ? "REVIEW" : "MODEL")
-    )
-      .toUpperCase()
-      .slice(0, 18);
+  function createKeyPreview(value, style, index, inactive = false) {
+    const preview = document.createElement("img");
+    preview.className = "key-preview";
+    preview.alt = "";
+    preview.dataset.choiceIndex = String(index);
+    preview.dataset.styleId = style?.id || "";
+    if (inactive) preview.dataset.inactive = "true";
+    preview.src = previewImage(value, style, inactive);
+    return preview;
   }
 
-  function refreshPreviewText() {
+  function refreshPreviews() {
     document.querySelectorAll(".key-preview").forEach((preview) => {
       const index = Number(preview.dataset.choiceIndex);
       const value = values()[index];
       if (!value) return;
-      const current = preview.querySelector(".preview-current");
-      const secondary = preview.querySelector(".preview-secondary");
-      const next = preview.querySelector(".preview-next");
-      if (current) current.textContent = previewPrimary(value);
-      if (secondary)
-        secondary.textContent = (value.effort || "medium").toUpperCase();
-      if (next) next.textContent = previewTarget(index);
+      const style = allStyles().find(
+        (item) => item.id === preview.dataset.styleId,
+      );
+      preview.src = previewImage(
+        value,
+        style,
+        preview.dataset.inactive === "true",
+      );
     });
-  }
-
-  // `inactive` shows a Single Preset key while the task uses other values.
-  function createKeyPreview(value, style, index, inactive = false) {
-    const preview = document.createElement("div");
-    preview.className = "key-preview";
-    preview.dataset.choiceIndex = String(index);
-    preview.setAttribute("aria-hidden", "true");
-
-    const fade = inactive ? validFade(settings.inactiveFade) : 0;
-    const backgroundColor = fadeColor(
-      style?.backgroundColor || "#303030",
-      fade,
-    );
-    const borderColor = inactive
-      ? backgroundColor
-      : style?.borderColor || "#a3a3a3";
-    const fontColor = fadeColor(style?.fontColor || "#f5f5f5", fade);
-    const showTitle = settings.showTitle !== false;
-    const showNext = !singleValue() && settings.showNext !== false;
-
-    const title = document.createElement("span");
-    title.className = "preview-title";
-    title.textContent = kind === "single" ? "PRESET" : kind.toUpperCase();
-
-    const current = document.createElement("span");
-    current.className = "preview-current";
-    current.textContent = previewPrimary(value);
-    const primaryFontSize = validFontSize(
-      kind === "thinking"
-        ? settings.thinkingFontSize
-        : kind === "shortcut"
-          ? settings.shortcutFontSize
-          : settings.modelFontSize,
-      kind === "shortcut" ? 18 : 21,
-    );
-    current.style.fontSize = `${Math.max(
-      7,
-      Math.round(primaryFontSize * 0.45),
-    )}px`;
-
-    const secondary = document.createElement("span");
-    secondary.className = "preview-secondary";
-    secondary.textContent = (value.effort || "medium").toUpperCase();
-    const secondaryFontSize = validFontSize(settings.thinkingFontSize, 18);
-    secondary.style.fontSize = `${Math.max(
-      7,
-      Math.round(secondaryFontSize * 0.45),
-    )}px`;
-    secondary.hidden = !hasPresetLayout();
-    const divider = document.createElement("span");
-    divider.className = "preview-divider";
-
-    const next = document.createElement("span");
-    next.className = "preview-next";
-    next.textContent = previewTarget(index);
-
-    const dot = document.createElement("span");
-    dot.className = "preview-dot";
-    if (kind === "shortcut") {
-      const layout = shortcutLayout(primaryFontSize, showTitle);
-      const icon = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "svg",
-      );
-      icon.classList.add("preview-shortcut-icon");
-      icon.setAttribute("viewBox", "0 0 144 144");
-      icon.style.top = `${(layout.iconOffset / 144) * 100}%`;
-      icon.innerHTML = shortcutIconMarkup(
-        value.shortcut,
-        fontColor,
-        backgroundColor,
-      );
-      title.style.top = `${((layout.headerCenter ?? 0) / 144) * 100}%`;
-      current.style.top = `${(layout.labelCenter / 144) * 100}%`;
-      preview.append(title, icon, current);
-    } else {
-      const layout = keyLayout(
-        showTitle,
-        showNext,
-        primaryFontSize,
-        hasPresetLayout() ? secondaryFontSize : undefined,
-      );
-      title.style.top = `${((layout.headerCenter ?? 0) / 144) * 100}%`;
-      current.style.top = `${(layout.primaryCenter / 144) * 100}%`;
-      secondary.style.top = `${((layout.secondaryCenter ?? 0) / 144) * 100}%`;
-      divider.style.top = `${(((layout.footerTop ?? 0) + 1) / 144) * 100}%`;
-      next.style.top = `${(((layout.footerTop ?? 0) + 15) / 144) * 100}%`;
-      dot.style.top = `${(((layout.footerTop ?? 0) + 27) / 144) * 100}%`;
-      preview.append(title, current, secondary, divider, next, dot);
-    }
-
-    preview.style.background = backgroundColor;
-    preview.style.borderColor = borderColor;
-    preview.style.color = fontColor;
-    divider.style.background = borderColor;
-    dot.style.background = borderColor;
-    title.hidden = !showTitle;
-    divider.hidden = !showNext;
-    next.hidden = !showNext;
-    dot.hidden = !showNext;
-    return preview;
   }
 
   function styleRow(container, value, index) {
@@ -666,9 +529,7 @@
     labelElement.textContent = "Colors";
     const styles = allStyles();
     if (!value.styleId) {
-      value.styleId =
-        styleCatalog.builtInStyles[index % 16]?.id ||
-        builtInStyleIds[index % builtInStyleIds.length];
+      value.styleId = builtInStyleIds[index % builtInStyleIds.length];
       save();
     }
 
@@ -761,7 +622,7 @@
           hasPresetLayout() ? "Model label" : "Label",
           "label",
           value,
-          hasPresetLayout() ? "Sol" : "Short key label",
+          value.model ? modelLabel(value.model) : "Sol",
         );
       if (kind !== "thinking" && kind !== "shortcut")
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
@@ -824,16 +685,45 @@
       choice.append(buttons);
       container.append(choice);
     });
+    renderSuggestions();
     window.scrollTo(0, scroll);
   }
 
-  document.querySelector("#add").addEventListener("click", () => {
+  // The models that tasks used and that this key does not have yet.
+  function renderSuggestions() {
+    const element = document.querySelector("#suggestions");
+    const models =
+      kind === "model" || kind === "preset"
+        ? recentModels.filter(
+            (model) =>
+              !values().some(
+                (value) => comparable(value?.model) === comparable(model),
+              ),
+          )
+        : [];
+    const full = values().length >= 20;
+    const key = `${full}\n${models.join("\n")}`;
+    if (key === suggestionKey) return;
+    suggestionKey = key;
+    element.replaceChildren(
+      ...models.map((model) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "suggestion";
+        button.textContent = `+ ${modelLabel(model)}`;
+        button.title = model;
+        button.disabled = full;
+        button.addEventListener("click", () => addValue(model));
+        return button;
+      }),
+    );
+    element.hidden = models.length === 0;
+  }
+
+  function addValue(model = currentState?.model || "") {
     if (singleValue()) return;
     if (values().length >= 20) return;
-    const styleId =
-      styleCatalog.builtInStyles[values().length % 16]?.id ||
-      builtInStyleIds[values().length % builtInStyleIds.length];
-    const model = currentState?.model || "";
+    const styleId = builtInStyleIds[values().length % builtInStyleIds.length];
     const effort =
       currentState?.effort && currentState.effort !== "default"
         ? currentState.effort
@@ -856,14 +746,18 @@
     document
       .querySelector("#choices .choice:last-child")
       ?.scrollIntoView({ block: "nearest" });
-  });
+  }
+
+  document.querySelector("#add").addEventListener("click", () => addValue());
 
   for (const [selector, setting] of [
     ["#show-title", "showTitle"],
+    ["#fit-text", "fitText"],
     ["#show-next", "showNext"],
   ]) {
     document.querySelector(selector).addEventListener("change", (event) => {
       settings[setting] = event.currentTarget.checked;
+      renderDisplayOptions();
       render();
       save();
     });

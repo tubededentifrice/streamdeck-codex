@@ -1,17 +1,13 @@
 import type { JsonObject } from "@elgato/utils";
 
-import type { CodexState, SettingsActionKind } from "./settings";
+import {
+  type CodexState,
+  sameModel,
+  type SettingsActionKind,
+} from "./settings";
 
-// Same comparison as `sameModel` in settings.ts. This module keeps no runtime
-// imports, because the publication script loads it with Node type stripping,
-// which cannot resolve extensionless imports.
 function sameValue(a: unknown, b: string): boolean {
-  const comparable = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-  return typeof a === "string" && comparable(a) === comparable(b);
+  return typeof a === "string" && sameModel(a, b);
 }
 
 export type KeyStyle = Readonly<{
@@ -55,24 +51,50 @@ const createBuiltIn = (
     name,
   });
 
+/** The built-in presets in hue order, then the neutral presets. */
 export const BUILT_IN_STYLES: readonly KeyStyle[] = Object.freeze([
-  createBuiltIn("Ocean", "#38BDF8", "#082F49", "#F0F9FF"),
-  createBuiltIn("Azure", "#60A5FA", "#172554", "#EFF6FF"),
-  createBuiltIn("Indigo", "#818CF8", "#1E1B4B", "#EEF2FF"),
-  createBuiltIn("Violet", "#A78BFA", "#2E1065", "#F5F3FF"),
   createBuiltIn("Plum", "#E879F9", "#4A044E", "#FDF4FF"),
   createBuiltIn("Rose", "#FB7185", "#4C0519", "#FFF1F2"),
+  createBuiltIn("Crimson", "#F43F5E", "#3F0712", "#FFF1F2"),
   createBuiltIn("Coral", "#F97316", "#431407", "#FFF7ED"),
   createBuiltIn("Amber", "#FBBF24", "#451A03", "#FFFBEB"),
+  createBuiltIn("Gold", "#FACC15", "#422006", "#FEFCE8"),
   createBuiltIn("Lime", "#A3E635", "#1A2E05", "#F7FEE7"),
   createBuiltIn("Emerald", "#34D399", "#022C22", "#ECFDF5"),
   createBuiltIn("Teal", "#2DD4BF", "#042F2E", "#F0FDFA"),
   createBuiltIn("Cyan", "#22D3EE", "#083344", "#ECFEFF"),
+  createBuiltIn("Ocean", "#38BDF8", "#082F49", "#F0F9FF"),
+  createBuiltIn("Azure", "#60A5FA", "#172554", "#EFF6FF"),
+  createBuiltIn("Indigo", "#818CF8", "#1E1B4B", "#EEF2FF"),
+  createBuiltIn("Violet", "#A78BFA", "#2E1065", "#F5F3FF"),
   createBuiltIn("Slate", "#94A3B8", "#0F172A", "#F8FAFC"),
   createBuiltIn("Silver", "#D1D5DB", "#1F2937", "#F9FAFB"),
-  createBuiltIn("Crimson", "#F43F5E", "#3F0712", "#FFF1F2"),
-  createBuiltIn("Gold", "#FACC15", "#422006", "#FEFCE8"),
 ]);
+
+/**
+ * The presets that new values take in turn. This order is independent of the
+ * display order, so existing keys keep their colors.
+ */
+export const STYLE_CYCLE: readonly string[] = Object.freeze(
+  [
+    "ocean",
+    "azure",
+    "indigo",
+    "violet",
+    "plum",
+    "rose",
+    "coral",
+    "amber",
+    "lime",
+    "emerald",
+    "teal",
+    "cyan",
+    "slate",
+    "silver",
+    "crimson",
+    "gold",
+  ].map((name) => `builtin:${name}`),
+);
 
 export const NEUTRAL_STYLE: KeyStyle = Object.freeze({
   backgroundColor: "#303030",

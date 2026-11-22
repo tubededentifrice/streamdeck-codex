@@ -1,16 +1,19 @@
-import type {
-  ActionKind,
-  CodexState,
-  ModelChoice,
-  PresetChoice,
-  SettingsActionKind,
-  ShortcutChoice,
-  ShortcutId,
-  ThinkingChoice,
+import { modelLabel } from "../domain/model-label";
+import {
+  type ActionKind,
+  type CodexState,
+  DEFAULT_INACTIVE_FADE,
+  type ModelChoice,
+  type PresetChoice,
+  type SettingsActionKind,
+  type ShortcutChoice,
+  type ShortcutId,
+  type ThinkingChoice,
 } from "../domain/settings";
 import type { KeyStyle } from "../domain/styles";
 
 type DisplayOptions = {
+  fitText?: boolean;
   modelFontSize?: number;
   showNext?: boolean;
   showTitle?: boolean;
@@ -78,10 +81,284 @@ function fadeColor(color: string, fade: number): string {
     .join("")}`;
 }
 
-function compactModel(model: string): string {
-  const match = /^gpt-([0-9.]+)-(.+)$/.exec(model);
-  if (!match) return model.toUpperCase().slice(0, 18);
-  return `${match[2].toUpperCase()} ${match[1]}`.slice(0, 18);
+// Advance widths of a bold sans-serif face, in 1/1000 em. The key font can be
+// heavier than this face, so `emWidth` adds a margin.
+const GLYPH_WIDTHS = new Map<string, number>(
+  (
+    [
+      [" .,/iIjl·", 278],
+      [":;!()[]-ft`", 333],
+      ["r*{}", 389],
+      ['"', 474],
+      ["z", 500],
+      ["0123456789#$_Jacekvsxy", 556],
+      ["+<=>~^", 584],
+      ["?FLTZbdghnopqu", 611],
+      ["EPSVXY", 667],
+      ["ABCDHKNRU&", 722],
+      ["GOQw", 778],
+      ["M", 833],
+      ["%m", 889],
+      ["W", 944],
+      ["@…", 1000],
+      ["'", 238],
+      ["|", 280],
+    ] as const
+  ).flatMap(([characters, width]) =>
+    [...characters].map((character) => [character, width] as const),
+  ),
+);
+// The text area inside the border, with a margin.
+const TEXT_WIDTH = 110;
+const TEXT_HEIGHT = 112;
+const MIN_SECTION_GAP = 5;
+// The height that a wrapped value can use.
+const VALUE_HEIGHT = 72;
+const DIVIDER_SPACE = 9;
+const TITLE_SIZE = 15;
+const MIN_FIT_SIZE = 8;
+
+function emWidth(text: string): number {
+  let width = 0;
+  for (const character of text)
+    width +=
+      GLYPH_WIDTHS.get(character) ??
+      ((character.codePointAt(0) ?? 0) >= 0x2e80 ? 1000 : 667);
+  return (width / 1000) * 1.06;
+}
+
+/** The largest size from `min` to `max` at which `text` fits the key width. */
+function fitSize(text: string, max: number, min = MIN_FIT_SIZE): number {
+  const width = emWidth(text);
+  if (width === 0) return max;
+  return Math.max(min, Math.min(max, Math.floor(TEXT_WIDTH / width)));
+}
+
+/** Shortens `text` with an ellipsis until it fits the key width at `size`. */
+function clip(text: string, size: number): string {
+  if (emWidth(text) * size <= TEXT_WIDTH) return text;
+  const characters = [...text];
+  while (
+    characters.length > 1 &&
+    emWidth(`${characters.join("")}…`) * size > TEXT_WIDTH
+  )
+    characters.pop();
+  return `${characters.join("").trimEnd()}…`;
+}
+
+/** The largest size, without limits, at which all lines fit the key width. */
+function widthLimit(lines: string[]): number {
+  return Math.min(
+    ...lines.map((line) => {
+      const width = emWidth(line);
+      return width === 0 ? Number.POSITIVE_INFINITY : TEXT_WIDTH / width;
+    }),
+  );
+}
+
+/** Every way to break `words` into `count` lines, in order. */
+function breaks(words: string[], count: number): string[][] {
+  if (count === 1) return [[words.join(" ")]];
+  const result: string[][] = [];
+  for (let index = 1; index <= words.length - count + 1; index += 1)
+    for (const rest of breaks(words.slice(index), count - 1))
+      result.push([words.slice(0, index).join(" "), ...rest]);
+  return result;
+}
+
+/**
+ * Fits a value to the key width. A long value with spaces breaks into up to
+ * `maxLines` lines when one line would be smaller than `wrapBelow`. Each added
+ * line must make the text clearly larger.
+ */
+function fitLines(
+  text: string,
+  max: number,
+  wrapBelow: number,
+  maxLines: number,
+): { lines: string[]; size: number } {
+  const sizeOf = (lines: string[]) =>
+    Math.min(
+      max,
+      widthLimit(lines),
+      (VALUE_HEIGHT - (lines.length - 1) * 3) / (lines.length * 0.7),
+    );
+  let best = { lines: [text], size: sizeOf([text]) };
+  if (best.size < wrapBelow) {
+    const words = text.split(" ").filter(Boolean);
+    for (let count = 2; count <= Math.min(maxLines, words.length); count += 1)
+      for (const lines of breaks(words, count)) {
+        const size = sizeOf(lines);
+        if (size > best.size * 1.3) best = { lines, size };
+      }
+  }
+  return {
+    lines: best.lines,
+    size: Math.max(MIN_FIT_SIZE, Math.floor(best.size)),
+  };
+}
+
+type Line = {
+  dim?: boolean;
+  /** The size changes when the stack is too tall for the key. */
+  scalable?: boolean;
+  size: number;
+  spacing?: number;
+  text: string;
+  weight: 700 | 800;
+};
+type Section = { divider?: boolean; lines: Line[] };
+
+function lineGap(a: number, b: number): number {
+  return Math.min(5, Math.max(2.5, Math.min(a, b) * 0.14));
+}
+
+function sectionHeight(section: Section): number {
+  return section.lines.reduce(
+    (height, line, index) =>
+      height +
+      line.size * 0.7 +
+      (index > 0 ? lineGap(section.lines[index - 1].size, line.size) : 0),
+    section.divider ? DIVIDER_SPACE : 0,
+  );
+}
+
+/** Makes the scalable lines smaller until the stack fits the key height. */
+function fitHeight(sections: Section[]): void {
+  const minimumGaps = Math.max(0, sections.length - 1) * MIN_SECTION_GAP;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const total = sections.reduce(
+      (height, section) => height + sectionHeight(section),
+      minimumGaps,
+    );
+    if (total <= TEXT_HEIGHT) return;
+    const scalable = sections
+      .flatMap((section) => section.lines)
+      .filter((line) => line.scalable);
+    const scalableHeight = scalable.reduce(
+      (height, line) => height + line.size * 0.7,
+      0,
+    );
+    if (scalableHeight === 0) return;
+    const ratio = Math.max(0, 1 - (total - TEXT_HEIGHT) / scalableHeight);
+    for (const line of scalable)
+      line.size = Math.max(MIN_FIT_SIZE, Math.floor(line.size * ratio));
+  }
+}
+
+function drawSections(
+  sections: Section[],
+  font: string,
+  accent: string,
+): string {
+  const heights = sections.map(sectionHeight);
+  const fixed = heights.reduce((total, height) => total + height, 0);
+  const gap =
+    sections.length < 2
+      ? 0
+      : Math.max(
+          MIN_SECTION_GAP,
+          Math.min(22, (TEXT_HEIGHT + 4 - fixed) / (sections.length - 1)),
+        );
+  let top = 72 - (fixed + gap * Math.max(0, sections.length - 1)) / 2;
+  const markup: string[] = [];
+  for (const section of sections) {
+    if (section.divider) {
+      const y = Number((top + 1).toFixed(2));
+      markup.push(
+        `<line x1="20" y1="${y}" x2="124" y2="${y}" stroke="${accent}" stroke-width="2" opacity="0.55"/>`,
+      );
+      top += DIVIDER_SPACE;
+    }
+    section.lines.forEach((line, index) => {
+      if (index > 0) top += lineGap(section.lines[index - 1].size, line.size);
+      const height = line.size * 0.7;
+      const spacing = line.spacing ? ` letter-spacing="${line.spacing}"` : "";
+      const dim = line.dim ? ' fill-opacity="0.8"' : "";
+      markup.push(
+        `<text x="72" y="${alphabeticBaseline(top + height / 2, line.size)}" text-anchor="middle" fill="${font}"${dim} font-family="-apple-system,Arial,sans-serif" font-size="${line.size}" font-weight="${line.weight}"${spacing}>${escapeXml(line.text)}</text>`,
+      );
+      top += height;
+    });
+    top += gap;
+  }
+  return markup.join("\n\t\t");
+}
+
+function titleSection(kind: ActionKind): Section {
+  return {
+    lines: [
+      { size: TITLE_SIZE, spacing: 1.5, text: titleOf(kind), weight: 800 },
+    ],
+  };
+}
+
+/**
+ * The value lines of a key. With `fitText`, each line takes the largest size
+ * that fits the key; otherwise it takes its configured size.
+ */
+function valueSection(
+  primary: string,
+  secondary: string | undefined,
+  primarySize: number,
+  secondarySize: number,
+  fit: boolean,
+): Section {
+  if (!fit)
+    return {
+      lines: [
+        { size: primarySize, text: primary.slice(0, 18), weight: 800 },
+        ...(secondary === undefined
+          ? []
+          : [
+              {
+                size: secondarySize,
+                text: secondary.slice(0, 18),
+                weight: 700 as const,
+              },
+            ]),
+      ],
+    };
+  const main = fitLines(
+    primary,
+    secondary === undefined ? 40 : 34,
+    16,
+    secondary === undefined ? 3 : 2,
+  );
+  const lines: Line[] = main.lines.map((text) => ({
+    scalable: true,
+    size: main.size,
+    text,
+    weight: 800,
+  }));
+  if (secondary !== undefined)
+    lines.push({
+      scalable: true,
+      size: Math.min(fitSize(secondary, 30), main.size),
+      text: secondary,
+      weight: 700,
+    });
+  return { lines };
+}
+
+/** The next value below a divider, with the model and thinking on two lines. */
+function nextSection(texts: string[], fit: boolean): Section {
+  const size = fit ? Math.min(...texts.map((text) => fitSize(text, 13))) : 13;
+  return {
+    divider: true,
+    lines: texts.map((text) => ({
+      dim: true,
+      size,
+      text: fit ? clip(text, size) : text.slice(0, 28),
+      weight: 700,
+    })),
+  };
+}
+
+function clipSections(sections: Section[], fit: boolean): void {
+  if (!fit) return;
+  for (const line of sections.flatMap((section) => section.lines))
+    line.text = clip(line.text, line.size);
 }
 
 function currentLines(
@@ -89,106 +366,36 @@ function currentLines(
   state: CodexState,
   choice: ModelChoice | ThinkingChoice | PresetChoice | undefined,
 ): [string, string?] {
-  if (kind === "model")
-    return [
-      choice
-        ? (choice as ModelChoice).label.toUpperCase()
-        : compactModel(state.model),
-    ];
+  const model = (choice as ModelChoice | PresetChoice | undefined)?.label;
+  const label = (model ?? modelLabel(state.model)).toUpperCase();
+  if (kind === "model") return [label];
   if (kind === "thinking") return [state.effort.toUpperCase()];
-  return [
-    choice
-      ? (choice as PresetChoice).label.toUpperCase()
-      : compactModel(state.model),
-    state.effort.toUpperCase(),
-  ];
+  return [label, state.effort.toUpperCase()];
 }
 
-function nextLabel(
+function nextLines(
   kind: SettingsActionKind,
   choice: ModelChoice | ThinkingChoice | PresetChoice | undefined,
-): string | undefined {
-  if (!choice) return undefined;
+): string[] {
+  if (!choice) return ["NO CHOICES"];
   if (kind === "preset") {
     const preset = choice as PresetChoice;
-    return `${preset.label.toUpperCase()} / ${preset.effort.toUpperCase()}`;
+    return [preset.label.toUpperCase(), preset.effort.toUpperCase()];
   }
   if (kind === "thinking")
-    return (choice as ThinkingChoice).effort.toUpperCase();
-  return (choice as ModelChoice).label.toUpperCase();
+    return [(choice as ThinkingChoice).effort.toUpperCase()];
+  return [(choice as ModelChoice).label.toUpperCase()];
 }
 
-// Same default as DEFAULT_INACTIVE_FADE in settings.ts. This module keeps no
-// runtime imports, because the publication script loads it with Node type
-// stripping, which cannot resolve extensionless imports.
 function fadePercent(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 75;
+  if (typeof value !== "number" || !Number.isFinite(value))
+    return DEFAULT_INACTIVE_FADE;
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function fontSize(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(10, Math.min(48, Math.round(value)));
-}
-
-type KeyLayout = {
-  footerTop?: number;
-  headerCenter?: number;
-  primaryCenter: number;
-  secondaryCenter?: number;
-};
-
-function keyLayout(
-  showTitle: boolean,
-  showNext: boolean,
-  primaryFontSize: number,
-  secondaryFontSize?: number,
-): KeyLayout {
-  const titleHeight = 15 * 0.7;
-  const primaryHeight = primaryFontSize * 0.7;
-  const secondaryHeight =
-    secondaryFontSize === undefined ? 0 : secondaryFontSize * 0.7;
-  const valueGap =
-    secondaryFontSize === undefined
-      ? 0
-      : Math.min(
-          4,
-          Math.max(2, Math.min(primaryFontSize, secondaryFontSize) * 0.12),
-        );
-  const valueHeight = primaryHeight + valueGap + secondaryHeight;
-  const footerHeight = 30;
-  const sectionCount = 1 + Number(showTitle) + Number(showNext);
-  const fixedHeight =
-    valueHeight + (showTitle ? titleHeight : 0) + (showNext ? footerHeight : 0);
-  const sectionGap =
-    sectionCount === 1
-      ? 0
-      : Math.max(4, Math.min(22, (128 - fixedHeight) / (sectionCount - 1)));
-  const totalHeight = fixedHeight + (sectionCount - 1) * sectionGap;
-  let top = 72 - totalHeight / 2;
-  let headerCenter: number | undefined;
-  if (showTitle) {
-    headerCenter = top + titleHeight / 2;
-    top += titleHeight + sectionGap;
-  }
-  const primaryCenter = top + primaryHeight / 2;
-  const secondaryCenter =
-    secondaryFontSize === undefined
-      ? undefined
-      : top + primaryHeight + valueGap + secondaryHeight / 2;
-  top += valueHeight;
-  const footerTop = showNext ? top + sectionGap : undefined;
-  return {
-    footerTop:
-      footerTop === undefined ? undefined : Number(footerTop.toFixed(2)),
-    headerCenter:
-      headerCenter === undefined ? undefined : Number(headerCenter.toFixed(2)),
-    primaryCenter: Number(primaryCenter.toFixed(2)),
-    secondaryCenter:
-      secondaryCenter === undefined
-        ? undefined
-        : Number(secondaryCenter.toFixed(2)),
-  };
 }
 
 function alphabeticBaseline(center: number, size: number): number {
@@ -208,60 +415,39 @@ function stackCenters(sizes: number[], gap: number): number[] {
   });
 }
 
+/** Shows the current value and, below a divider, the value of the next press. */
 export function renderKey(
   kind: SettingsActionKind,
   state: CodexState,
   next: ModelChoice | ThinkingChoice | PresetChoice | undefined,
-  choiceCount: number,
   style?: KeyStyle,
   borderColor?: string,
   display: DisplayOptions = {},
   current?: ModelChoice | ThinkingChoice | PresetChoice,
 ): string {
   const [primary, secondary] = currentLines(kind, state, current);
-  const target = nextLabel(kind, next);
-  const header = titleOf(kind);
-  const showTitle = display.showTitle !== false;
-  const showNext = display.showNext !== false;
+  const fit = display.fitText !== false;
   const accent = style?.borderColor ?? COLORS[kind];
   const font = style?.fontColor ?? "#ffffff";
-  const primaryFontSize =
-    kind === "thinking"
-      ? fontSize(display.thinkingFontSize, 21)
-      : fontSize(display.modelFontSize, 21);
-  const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
-  const layout = keyLayout(
-    showTitle,
-    showNext,
-    primaryFontSize,
-    secondary ? secondaryFontSize : undefined,
-  );
-  const primaryY = alphabeticBaseline(layout.primaryCenter, primaryFontSize);
-  const secondaryY =
-    layout.secondaryCenter === undefined
-      ? undefined
-      : alphabeticBaseline(layout.secondaryCenter, secondaryFontSize);
-  const secondaryMarkup = secondary
-    ? `<text x="72" y="${secondaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(secondary)}</text>`
-    : "";
-  const footer = target
-    ? `${choiceCount > 1 ? "NEXT" : "SET"}  ${target}`
-    : "NO CHOICES";
-  const headerMarkup = showTitle
-    ? `<text x="72" y="${alphabeticBaseline(layout.headerCenter!, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${header}</text>`
-    : "";
-  const footerMarkup = showNext
-    ? `<line x1="20" y1="${layout.footerTop! + 1}" x2="124" y2="${layout.footerTop! + 1}" stroke="${accent}" stroke-width="2" opacity="0.55"/>
-		<text x="72" y="${alphabeticBaseline(layout.footerTop! + 15, 11)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="11" font-weight="700">${escapeXml(footer.slice(0, 28))}</text>
-		<circle cx="72" cy="${layout.footerTop! + 27}" r="3" fill="${accent}"/>`
-    : "";
+  const sections = [
+    ...(display.showTitle === true ? [titleSection(kind)] : []),
+    valueSection(
+      primary,
+      secondary,
+      kind === "thinking"
+        ? fontSize(display.thinkingFontSize, 21)
+        : fontSize(display.modelFontSize, 21),
+      fontSize(display.thinkingFontSize, 18),
+      fit,
+    ),
+    ...(display.showNext !== false
+      ? [nextSection(nextLines(kind, next), fit)]
+      : []),
+  ];
+  if (fit) fitHeight(sections);
+  clipSections(sections, fit);
   return svg(
-    `
-		${headerMarkup}
-		<text x="72" y="${primaryY}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(primary)}</text>
-		${secondaryMarkup}
-		${footerMarkup}
-	`,
+    drawSections(sections, font, accent),
     borderColor ?? accent,
     style?.backgroundColor,
   );
@@ -279,26 +465,23 @@ export function renderSingleKey(
   display: DisplayOptions & { inactiveFade?: number } = {},
 ): string {
   const fade = active ? 0 : fadePercent(display.inactiveFade);
-  const showTitle = display.showTitle !== false;
+  const fit = display.fitText !== false;
   const font = fadeColor(style?.fontColor ?? "#ffffff", fade);
   const background = fadeColor(style?.backgroundColor ?? "#101319", fade);
-  const primaryFontSize = fontSize(display.modelFontSize, 21);
-  const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
-  const layout = keyLayout(
-    showTitle,
-    false,
-    primaryFontSize,
-    secondaryFontSize,
-  );
-  const headerMarkup = showTitle
-    ? `<text x="72" y="${alphabeticBaseline(layout.headerCenter!, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${titleOf("single")}</text>`
-    : "";
+  const sections = [
+    ...(display.showTitle === true ? [titleSection("single")] : []),
+    valueSection(
+      preset.label.toUpperCase(),
+      preset.effort.toUpperCase(),
+      fontSize(display.modelFontSize, 21),
+      fontSize(display.thinkingFontSize, 18),
+      fit,
+    ),
+  ];
+  if (fit) fitHeight(sections);
+  clipSections(sections, fit);
   return svg(
-    `
-		${headerMarkup}
-		<text x="72" y="${alphabeticBaseline(layout.primaryCenter, primaryFontSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(preset.label.toUpperCase())}</text>
-		<text x="72" y="${alphabeticBaseline(layout.secondaryCenter!, secondaryFontSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(preset.effort.toUpperCase())}</text>
-	`,
+    drawSections(sections, font, style?.borderColor ?? COLORS.single),
     active ? (borderColor ?? style?.borderColor ?? COLORS.single) : borderColor,
     background,
   );
@@ -326,11 +509,16 @@ export function renderShortcutKey(
   borderColor?: string,
   display: DisplayOptions & { shortcutFontSize?: number } = {},
 ): string {
-  const showTitle = display.showTitle !== false;
+  const showTitle = display.showTitle === true;
   const accent = style?.borderColor ?? COLORS.shortcut;
   const font = style?.fontColor ?? "#ffffff";
   const background = style?.backgroundColor ?? "#101319";
-  const labelSize = fontSize(display.shortcutFontSize, 18);
+  const fit = display.fitText !== false;
+  const text = current.label.toUpperCase();
+  const labelSize = fit
+    ? fitSize(text, 22)
+    : fontSize(display.shortcutFontSize, 18);
+  const label = fit ? clip(text, labelSize) : text.slice(0, 18);
   const titleHeight = 15 * 0.7;
   const iconHeight = 56;
   const labelHeight = labelSize * 0.7;
@@ -349,7 +537,7 @@ export function renderShortcutKey(
     `
 		${headerMarkup}
 		<g transform="translate(0 ${Number((iconCenter - 62).toFixed(2))})">${shortcutIcon(current.shortcut, font, background)}</g>
-		<text x="72" y="${alphabeticBaseline(labelCenter, labelSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${labelSize}" font-weight="800">${escapeXml(current.label.toUpperCase().slice(0, 18))}</text>
+		<text x="72" y="${alphabeticBaseline(labelCenter, labelSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${labelSize}" font-weight="800">${escapeXml(label)}</text>
 	`,
     borderColor ?? accent,
     style?.backgroundColor,
@@ -361,7 +549,7 @@ export function renderLoading(
   status = "UPDATING…",
   display: DisplayOptions = {},
 ): string {
-  const showTitle = display.showTitle !== false;
+  const showTitle = display.showTitle === true;
   const inactive = status === "NOT IN ACTIVE CHAT";
   const statusLines = inactive ? ["NOT IN", "ACTIVE", "CHAT"] : [status];
   const statusSize = inactive ? 15 : 14;
@@ -430,7 +618,7 @@ export function renderError(
                     : app === "claude"
                       ? "CLAUDE OFFLINE"
                       : "CODEX OFFLINE";
-  const showKind = display.showTitle !== false;
+  const showKind = display.showTitle === true;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
   const kindMarkup = showKind
     ? `<text x="72" y="${alphabeticBaseline(centers[2], 10)}" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(titleOf(kind))}</text>`

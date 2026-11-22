@@ -7,12 +7,12 @@ import type {
 } from "../domain/settings";
 import {
   choicesFor,
-  cycleChoices,
   displayChoice,
   matchesChoice,
   nextChoice,
   targetState,
 } from "../domain/settings";
+import { RecentModels } from "../domain/recent-models";
 import { activeStyleFor } from "../domain/styles";
 import {
   renderError,
@@ -55,6 +55,7 @@ export class CodexController {
   >();
   readonly #updates = new Map<string, Promise<void>>();
   readonly #visible = new Map<string, VisibleAction>();
+  readonly #recentModels = new RecentModels();
   #lastRefreshError: string | undefined;
   #refreshVersion = 0;
 
@@ -99,19 +100,27 @@ export class CodexController {
     return this.refreshAll();
   }
 
-  /** The next-turn values of the selected task, for the property inspector. */
-  async currentState(): Promise<
-    { app: AgentApp; effort: string; model: string } | undefined
-  > {
+  /**
+   * The next-turn values of the selected task and the models that tasks used,
+   * for the property inspector.
+   */
+  async currentState(): Promise<{
+    app?: AgentApp;
+    effort?: string;
+    model?: string;
+    models: string[];
+  }> {
     try {
       const state = await this.#client.readState();
+      this.#recentModels.add(state.model);
       return {
         app: appForHostId(state.hostId),
         effort: state.effort,
         model: state.model,
+        models: [...this.#recentModels.list],
       };
     } catch {
-      return undefined;
+      return { models: [...this.#recentModels.list] };
     }
   }
 
@@ -268,6 +277,7 @@ export class CodexController {
     )
       return;
     this.#lastRefreshError = undefined;
+    this.#recentModels.add(state.model);
 
     await Promise.all(
       [...this.#visible.values()].map(async ({ action, kind, settings }) => {
@@ -305,7 +315,6 @@ export class CodexController {
       kind,
       state,
       nextChoice(kind as "preset", settings, state),
-      cycleChoices(kind, settings).length,
       style,
       borderColor,
       settings,

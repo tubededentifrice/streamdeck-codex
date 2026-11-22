@@ -22,7 +22,7 @@ import {
   defaultsFor,
   type SettingsActionKind,
 } from "../domain/settings";
-import { BUILT_IN_STYLES } from "../domain/styles";
+import { STYLE_CYCLE } from "../domain/styles";
 import { styleService } from "../ui/style-service";
 import { catalogSync, logLinked } from "./catalog-sync";
 
@@ -112,7 +112,7 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
       const state = await codexController.currentState();
       await streamDeck.ui.sendToPropertyInspector({
         type: "state/current",
-        ...(state ?? {}),
+        ...state,
       });
       return;
     }
@@ -142,7 +142,7 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
     if (Array.isArray(values))
       for (const [index, value] of values.entries()) {
         if (value && typeof value === "object" && !value.styleId)
-          value.styleId = BUILT_IN_STYLES[index % BUILT_IN_STYLES.length].id;
+          value.styleId = STYLE_CYCLE[index % STYLE_CYCLE.length];
       }
     return result;
   }
@@ -202,7 +202,7 @@ function withDefaults(
   if (Array.isArray(values))
     for (const [index, value] of values.entries()) {
       if (value && typeof value === "object" && !value.styleId)
-        value.styleId = BUILT_IN_STYLES[index % BUILT_IN_STYLES.length].id;
+        value.styleId = STYLE_CYCLE[index % STYLE_CYCLE.length];
     }
   return result;
 }

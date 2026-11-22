@@ -1,5 +1,7 @@
 import type { JsonObject } from "@elgato/utils";
 
+import { modelLabel } from "./model-label";
+
 /** `single` sets one preset and shows whether the task uses it. */
 export type SettingsActionKind = "model" | "thinking" | "preset" | "single";
 export type ActionKind = SettingsActionKind | "shortcut";
@@ -35,6 +37,8 @@ export type ShortcutChoice = {
 export type ActionSettings = JsonObject & {
   /** The last value catalog revision that this key merged. */
   catalogRevision?: number;
+  /** Sizes each text line to fill the key. On when not set. */
+  fitText?: boolean;
   /** How much a single preset key fades while the task uses other values (0–100). */
   inactiveFade?: number;
   modelFontSize?: number;
@@ -128,7 +132,7 @@ function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
 }
 
 export function defaultsFor(kind: ActionKind): ActionSettings {
-  const display = { showNext: true, showTitle: true };
+  const display = { fitText: true, showNext: true, showTitle: false };
   if (kind === "model")
     return {
       ...display,
@@ -197,7 +201,10 @@ export function choicesFor(
         styleId: cleanStyleId(choice?.styleId),
       }))
       .filter((choice) => choice.model)
-      .map((choice) => ({ ...choice, label: choice.label || choice.model }));
+      .map((choice) => ({
+        ...choice,
+        label: choice.label || modelLabel(choice.model),
+      }));
     return uniqueBy(choices, (choice) => comparable(choice.model));
   }
 
@@ -256,7 +263,7 @@ export function choicesFor(
     .filter((choice) => choice.model && choice.effort)
     .map((choice) => ({
       ...choice,
-      label: choice.label || `${choice.model} · ${choice.effort}`,
+      label: choice.label || modelLabel(choice.model),
     }));
   return uniqueBy(
     choices,

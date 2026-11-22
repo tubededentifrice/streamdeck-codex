@@ -4,6 +4,17 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+- Fit the text to the key by default. A long model name breaks into lines.
+  Clear **Fit text to key** to set the text sizes.
+- Show the next value without the NEXT or SET prefix and without the dot, in a
+  larger font. A Preset key shows the next model and thinking level on two
+  lines.
+- Hide the action title on new keys.
+- Name a model without a configured label from its identifier, for example
+  "Sol 6.2" for `gpt-6.2-sol` and "Opus 5.5" for `claude-opus-5-5`.
+- List the models that tasks used in Model and Preset settings. Click a model
+  to add it to the key.
+- Sort the built-in color presets by hue.
 - Control Claude for macOS through its window: new and sent chats, Claude Code
   sessions, and cloud sessions. Shortcut keys toggle the Claude Code session
   panels.

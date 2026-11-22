@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CodexError } from "../src/codex/errors";
+import type { CodexState } from "../src/domain/settings";
 import {
   renderError,
   renderKey,
@@ -8,6 +9,25 @@ import {
   renderShortcutKey,
   renderSingleKey,
 } from "../src/ui/key-renderer";
+
+function state(values: Partial<CodexState> = {}): CodexState {
+  return {
+    effort: "medium",
+    hostId: "local",
+    model: "gpt-5.6-sol",
+    threadId: "thread-123",
+    ...values,
+  };
+}
+
+/** The text lines of a key image, from top to bottom. */
+function textLines(image: string): { size: number; text: string; y: number }[] {
+  return [
+    ...image.matchAll(
+      /<text[^>]* y="([\d.]+)"[^>]*font-size="(\d+)"[^>]*>([^<]*)<\/text>/g,
+    ),
+  ].map(([, y, size, text]) => ({ size: Number(size), text, y: Number(y) }));
+}
 
 describe("key renderer", () => {
   it("renders each shortcut with its selected colors and no footer", () => {
@@ -41,7 +61,12 @@ describe("key renderer", () => {
 
   it("shows one shortcut as a direct Codex action", () => {
     const image = decodeURIComponent(
-      renderShortcutKey({ label: "Side chat", shortcut: "side-chat" }),
+      renderShortcutKey(
+        { label: "Side chat", shortcut: "side-chat" },
+        undefined,
+        undefined,
+        { fitText: false, showTitle: true },
+      ),
     );
     expect(image).toContain(">SIDE CHAT<");
     expect(image).not.toContain("OPEN CODEX");
@@ -56,7 +81,7 @@ describe("key renderer", () => {
         { label: "Side chat", shortcut: "side-chat" },
         undefined,
         undefined,
-        { showTitle: false },
+        { fitText: false },
       ),
     );
     expect(withoutTitle).not.toContain(">SHORTCUT<");
@@ -70,14 +95,8 @@ describe("key renderer", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
+        state(),
         { label: "Luna", model: "gpt-5.6-luna" },
-        2,
         undefined,
         undefined,
         undefined,
@@ -86,107 +105,95 @@ describe("key renderer", () => {
     );
     expect(image).toContain(">SOL<");
     expect(image).not.toContain("SOL 5.6");
-    expect(image).toContain("NEXT  LUNA");
-    expect(image).toMatch(/y="33\.05"[^>]*font-size="15"[^>]*>MODEL<\/text>/);
-    expect(image).toMatch(
-      /y="110\.56"[^>]*font-size="11"[^>]*>NEXT[ ]{2}LUNA<\/text>/,
+    expect(image).toMatch(/font-size="13"[^>]*>LUNA<\/text>/);
+    expect(image).not.toContain("NEXT");
+    expect(image).not.toContain("<circle");
+    expect(image).not.toContain(">MODEL<");
+  });
+
+  it("shows a one-value key without a prefix", () => {
+    const image = decodeURIComponent(
+      renderKey("model", state(), { label: "Luna", model: "gpt-5.6-luna" }),
     );
+    expect(image).toContain(">LUNA<");
+    expect(image).not.toMatch(/>SET /);
   });
 
   it("escapes configured labels", () => {
     const image = decodeURIComponent(
-      renderKey(
-        "model",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "custom",
-          threadId: "thread-123",
-        },
-        { label: "A&B<", model: "next" },
-        1,
-      ),
+      renderKey("model", state({ model: "custom" }), {
+        label: "A&B<",
+        model: "next",
+      }),
     );
     expect(image).toContain("A&amp;B&lt;");
     expect(image).not.toContain("A&B<");
   });
 
-  it("can hide the action title and next value", () => {
+  it("names a model without a configured label from its id", () => {
+    const image = decodeURIComponent(
+      renderKey("model", state({ model: "claude-opus-5-5" }), {
+        label: "Luna",
+        model: "gpt-5.6-luna",
+      }),
+    );
+    expect(image).toContain(">OPUS 5.5<");
+  });
+
+  it("can hide the next value and show the action title", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
+        state(),
         { label: "Luna", model: "gpt-5.6-luna" },
-        2,
         undefined,
         undefined,
-        { showNext: false, showTitle: false },
+        { fitText: false, showNext: false, showTitle: false },
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
     expect(image).toContain(">SOL<");
     expect(image).not.toContain(">MODEL<");
-    expect(image).not.toContain("NEXT  LUNA");
+    expect(image).not.toContain("LUNA");
     expect(image).toMatch(/y="79\.56"[^>]*font-size="21"/);
-  });
 
-  it("centers the full text stack when only the title is shown", () => {
-    const image = decodeURIComponent(
+    const titled = decodeURIComponent(
       renderKey(
         "model",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
-        undefined,
-        1,
+        state(),
         undefined,
         undefined,
-        { showNext: false, showTitle: true },
+        undefined,
+        { fitText: false, showNext: false, showTitle: true },
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toMatch(/y="59\.05"[^>]*>MODEL<\/text>/);
-    expect(image).toMatch(/y="95\.81"[^>]*>SOL<\/text>/);
-    expect(image).not.toContain("<line");
+    expect(titled).toMatch(/y="59\.05"[^>]*>MODEL<\/text>/);
+    expect(titled).toMatch(/y="95\.81"[^>]*>SOL<\/text>/);
+    expect(titled).not.toContain("<line");
   });
 
-  it("uses only the model label and selected effort for presets", () => {
+  it("shows the next preset model and thinking level on two lines", () => {
     const image = decodeURIComponent(
       renderKey(
         "preset",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
-        {
-          effort: "high",
-          label: "Luna",
-          model: "gpt-5.6-luna",
-        },
-        2,
+        state(),
+        { effort: "high", label: "Luna", model: "gpt-5.6-luna" },
         undefined,
         undefined,
         undefined,
-        {
-          effort: "medium",
-          label: "Sol",
-          model: "gpt-5.6-sol",
-        },
+        { effort: "medium", label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toContain(">SOL<");
-    expect(image).toContain(">MEDIUM<");
-    expect(image).toContain("NEXT  LUNA / HIGH");
+    const lines = textLines(image);
+    expect(lines.map((line) => line.text)).toEqual([
+      "SOL",
+      "MEDIUM",
+      "LUNA",
+      "HIGH",
+    ]);
+    expect(lines[2].size).toBe(lines[3].size);
+    expect(lines[3].y).toBeGreaterThan(lines[2].y);
     expect(image).not.toContain("SOL 5.6");
   });
 
@@ -194,14 +201,8 @@ describe("key renderer", () => {
     const image = decodeURIComponent(
       renderKey(
         "thinking",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
+        state(),
         { effort: "high", label: "Ignored next label" },
-        2,
         undefined,
         undefined,
         undefined,
@@ -209,114 +210,128 @@ describe("key renderer", () => {
       ),
     );
     expect(image).toContain(">MEDIUM<");
-    expect(image).toContain("NEXT  HIGH");
+    expect(image).toContain(">HIGH<");
     expect(image).not.toContain("IGNORED");
+  });
+
+  it("fits each value to the key", () => {
+    const short = textLines(
+      decodeURIComponent(
+        renderKey(
+          "model",
+          state(),
+          { label: "Luna", model: "gpt-5.6-luna" },
+          undefined,
+          undefined,
+          { modelFontSize: 12 },
+          { label: "Sol", model: "gpt-5.6-sol" },
+        ),
+      ),
+    );
+    const long = textLines(
+      decodeURIComponent(
+        renderKey(
+          "model",
+          state(),
+          { label: "Luna", model: "gpt-5.6-luna" },
+          undefined,
+          undefined,
+          undefined,
+          { label: "Opus 5.5 Extended", model: "gpt-5.6-sol" },
+        ),
+      ),
+    );
+    expect(short[0].size).toBe(40);
+    expect(long[0].size).toBeLessThan(short[0].size);
+    expect(long[0].size).toBeGreaterThanOrEqual(16);
+  });
+
+  it("breaks a long unconfigured model name into lines inside the key", () => {
+    const image = decodeURIComponent(
+      renderKey(
+        "model",
+        state({ model: "vendor-ultra-reasoning-model-preview-2-1" }),
+        { label: "Luna", model: "gpt-5.6-luna" },
+      ),
+    );
+    const lines = textLines(image);
+    const value = lines.slice(0, -1);
+    expect(value.length).toBeGreaterThan(1);
+    expect(value.map((line) => line.text).join(" ")).toBe(
+      "VENDOR ULTRA REASONING MODEL PREVIEW 2.1",
+    );
+    for (const line of lines) {
+      expect(line.y - line.size * 0.7).toBeGreaterThan(10);
+      expect(line.y).toBeLessThan(134);
+    }
+  });
+
+  it("keeps a fitted stack with a title inside the key", () => {
+    const lines = textLines(
+      decodeURIComponent(
+        renderKey(
+          "preset",
+          state(),
+          {
+            effort: "xhigh",
+            label: "Codex Max 5.1",
+            model: "gpt-5.1-codex-max",
+          },
+          undefined,
+          undefined,
+          { showTitle: true },
+          { effort: "medium", label: "Opus 5.5", model: "gpt-5.6-sol" },
+        ),
+      ),
+    );
+    expect(lines[0].text).toBe("PRESET");
+    expect(lines.at(-1)?.text).toBe("XHIGH");
+    expect(lines[0].y - lines[0].size * 0.7).toBeGreaterThan(10);
+    expect(lines.at(-1)!.y).toBeLessThan(134);
   });
 
   it("supports larger font sizes and aligns preset values by their size", () => {
     const image = decodeURIComponent(
       renderKey(
         "preset",
+        state(),
+        undefined,
+        undefined,
+        undefined,
         {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
+          fitText: false,
+          modelFontSize: 48,
+          showNext: false,
+          thinkingFontSize: 10,
         },
-        undefined,
-        1,
-        undefined,
-        undefined,
-        { modelFontSize: 48, thinkingFontSize: 10 },
-        {
-          effort: "medium",
-          label: "Sol",
-          model: "gpt-5.6-sol",
-        },
+        { effort: "medium", label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toMatch(/y="75\.03"[^>]*font-size="48"[^>]*>SOL<\/text>/);
-    expect(image).toMatch(/y="83\.65"[^>]*font-size="10"[^>]*>MEDIUM<\/text>/);
-
-    const reversed = decodeURIComponent(
-      renderKey(
-        "preset",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
-        undefined,
-        1,
-        undefined,
-        undefined,
-        { modelFontSize: 10, thinkingFontSize: 48 },
-        {
-          effort: "medium",
-          label: "Sol",
-          model: "gpt-5.6-sol",
-        },
-      ),
-    );
-    expect(reversed).toMatch(/y="48\.05"[^>]*font-size="10"[^>]*>SOL<\/text>/);
-    expect(reversed).toMatch(
-      /y="84\.03"[^>]*font-size="48"[^>]*>MEDIUM<\/text>/,
-    );
+    const [sol, medium] = textLines(image);
+    expect(sol).toMatchObject({ size: 48, text: "SOL" });
+    expect(medium).toMatchObject({ size: 10, text: "MEDIUM" });
+    // Centers 48 * 0.35 + 2.5 + 10 * 0.35 apart, with baselines 0.36 × size below.
+    expect(medium.y - sol.y).toBeCloseTo(9.12, 2);
   });
 
   it("limits unexpected font sizes to the supported range", () => {
     const image = decodeURIComponent(
       renderKey(
         "model",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
-        undefined,
-        1,
+        state(),
         undefined,
         undefined,
-        { modelFontSize: 100 },
+        undefined,
+        { fitText: false, modelFontSize: 100, showNext: false },
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(image).toMatch(/y="79\.53"[^>]*font-size="48"/);
-  });
-
-  it("keeps the complete maximum-size stack centered inside the key", () => {
-    const image = decodeURIComponent(
-      renderKey(
-        "preset",
-        {
-          effort: "medium",
-          hostId: "local",
-          model: "gpt-5.6-sol",
-          threadId: "thread-123",
-        },
-        { effort: "high", label: "Luna", model: "gpt-5.6-luna" },
-        2,
-        undefined,
-        undefined,
-        { modelFontSize: 48, thinkingFontSize: 48 },
-        {
-          effort: "medium",
-          label: "Sol",
-          model: "gpt-5.6-sol",
-        },
-      ),
-    );
-    expect(image).toMatch(/y="18\.65"[^>]*>PRESET<\/text>/);
-    expect(image).toMatch(/y="60\.73"[^>]*>SOL<\/text>/);
-    expect(image).toMatch(/y="98\.33"[^>]*>MEDIUM<\/text>/);
-    expect(image).toContain('cy="133" r="3"');
+    expect(image).toMatch(/y="89\.28"[^>]*font-size="48"/);
   });
 
   it("shows an inactive chat status on three lines", () => {
     const image = decodeURIComponent(
-      renderLoading("model", "NOT IN ACTIVE CHAT"),
+      renderLoading("model", "NOT IN ACTIVE CHAT", { showTitle: true }),
     );
     expect(image).toContain(">NOT IN<");
     expect(image).toContain(">ACTIVE<");
@@ -350,7 +365,6 @@ describe("key renderer", () => {
           threadId: "thread-123",
         },
         { effort: "medium", label: "Medium" },
-        2,
         {
           backgroundColor: "#112233",
           borderColor: "#445566",
@@ -368,7 +382,12 @@ describe("key renderer", () => {
 
   it("does not expose error details on the key", () => {
     const image = decodeURIComponent(
-      renderError("preset", new Error("Secret local path /tmp/private")),
+      renderError(
+        "preset",
+        new Error("Secret local path /tmp/private"),
+        "refresh",
+        { showTitle: true },
+      ),
     );
     expect(image).toContain("CODEX OFFLINE");
     expect(image).not.toContain("/tmp/private");
@@ -451,7 +470,9 @@ describe("key renderer", () => {
       name: "Test",
     };
     const preset = { effort: "high", label: "Luna", model: "gpt-5.6-luna" };
-    const active = decodeURIComponent(renderSingleKey(preset, true, style));
+    const active = decodeURIComponent(
+      renderSingleKey(preset, true, style, undefined, { showTitle: true }),
+    );
     expect(active).toContain('fill="#204080"');
     expect(active).toContain('stroke="#445566"');
     expect(active).toContain('fill="#FFFFFF"');
@@ -494,9 +515,17 @@ describe("key renderer", () => {
   });
 
   it("uses the Preset title for single preset statuses", () => {
-    expect(decodeURIComponent(renderLoading("single"))).toContain(">PRESET<");
+    const display = { showTitle: true };
     expect(
-      decodeURIComponent(renderError("single", new Error("Offline"))),
+      decodeURIComponent(renderLoading("single", undefined, display)),
     ).toContain(">PRESET<");
+    expect(
+      decodeURIComponent(
+        renderError("single", new Error("Offline"), "refresh", display),
+      ),
+    ).toContain(">PRESET<");
+    expect(decodeURIComponent(renderLoading("single"))).not.toContain(
+      ">PRESET<",
+    );
   });
 });

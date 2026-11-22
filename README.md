@@ -41,6 +41,9 @@ not change a response that Codex is already generating.
 4. Set a short label and a color for each value.
 5. Choose whether the key shows its title. Setting keys can also show the next
    value.
+6. **Fit text to key** is on by default. Each line of text takes the largest
+   size that fits the key, and a long model name breaks into lines. Clear it to
+   set the text sizes.
 
 Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 `medium`, `high`, or `xhigh`.
@@ -48,6 +51,12 @@ Use Codex model identifiers such as `gpt-5.6-sol`. Use thinking values such as
 **Add value** adds the current model and thinking level of the selected task.
 The current value shows next to the button, so you can copy a new model
 identifier.
+
+A Model or Preset key lists the models that tasks used since the plug-in
+started and that the key does not have. Click a model to add it. The label
+comes from the model identifier: `gpt-6.2-sol` is "Sol 6.2", and
+`claude-opus-5-5` is "Opus 5.5". You can change the label. A key also shows
+this label for a task model that has no value on the key.
 
 Clear **Cycle** to keep a value on the key without cycling to it. The key still
 shows the label and colors of that value when the task uses it.

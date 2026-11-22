@@ -1,3 +1,4 @@
+import { modelLabel } from "./model-label";
 import {
   type ActionSettings,
   choicesFor,
@@ -8,6 +9,7 @@ import {
   type SettingsActionKind,
   type ThinkingChoice,
 } from "./settings";
+import { STYLE_CYCLE } from "./styles";
 
 /**
  * The models and thinking levels that any key uses. Each entry has the catalog
@@ -28,24 +30,6 @@ export type CatalogAdditions = {
 const MAX_MODELS = 100;
 const MAX_EFFORTS = 30;
 const MAX_CHOICES = 20;
-const STYLE_IDS = [
-  "builtin:ocean",
-  "builtin:azure",
-  "builtin:indigo",
-  "builtin:violet",
-  "builtin:plum",
-  "builtin:rose",
-  "builtin:coral",
-  "builtin:amber",
-  "builtin:lime",
-  "builtin:emerald",
-  "builtin:teal",
-  "builtin:cyan",
-  "builtin:slate",
-  "builtin:silver",
-  "builtin:crimson",
-  "builtin:gold",
-];
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -83,7 +67,7 @@ export function sanitizeCatalog(value: unknown): ValueCatalog {
     if (!isConfigValue(model) || models.some((m) => sameModel(m.model, model)))
       continue;
     models.push({
-      label: label(entry?.label, model),
+      label: label(entry?.label, modelLabel(model)),
       model,
       revision: revision(entry?.revision),
     });
@@ -132,7 +116,7 @@ export function addToCatalog(
       continue;
     next.revision += 1;
     next.models.push({
-      label: label(item.label, item.model),
+      label: label(item.label, modelLabel(item.model)),
       model: item.model,
       revision: next.revision,
     });
@@ -208,7 +192,7 @@ export function mergeCatalog(
         enabled: false,
         label: entry.label,
         model: entry.model,
-        styleId: STYLE_IDS[models.length % STYLE_IDS.length],
+        styleId: STYLE_CYCLE[models.length % STYLE_CYCLE.length],
       });
     }
     next.models = models;
@@ -229,7 +213,7 @@ export function mergeCatalog(
         effort: entry.effort,
         enabled: false,
         label: entry.label,
-        styleId: STYLE_IDS[efforts.length % STYLE_IDS.length],
+        styleId: STYLE_CYCLE[efforts.length % STYLE_CYCLE.length],
       });
     }
     next.thinking = efforts;
