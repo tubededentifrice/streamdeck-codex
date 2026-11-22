@@ -111,6 +111,10 @@ const GLYPH_WIDTHS = new Map<string, number>(
 // The text box is 1 unit inside the inner edge of the 5-unit border.
 const BOX_TOP = 8.5;
 const BOX_BOTTOM = 135.5;
+// The title and the next value are 2 units from the border, so antialiasing
+// does not touch the border.
+const TITLE_TOP = 9.5;
+const NEXT_BOTTOM = 134.5;
 const BOX_WIDTH = 127;
 const CAP_HEIGHT = 0.72;
 const SECTION_GAP = 5;
@@ -267,8 +271,8 @@ function drawKey(
   next: string[],
   font: string,
 ): string {
-  let top = BOX_TOP;
-  let bottom = BOX_BOTTOM;
+  let top = title === undefined ? BOX_TOP : TITLE_TOP;
+  let bottom = next.length > 0 ? NEXT_BOTTOM : BOX_BOTTOM;
   const markup: string[] = [];
   if (title !== undefined) {
     const lines: Line[] = [

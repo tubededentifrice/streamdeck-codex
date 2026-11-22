@@ -107,7 +107,7 @@ describe("key renderer", () => {
     );
     expect(image).toContain(">SOL<");
     expect(image).not.toContain("SOL 5.6");
-    expect(image).toMatch(/y="135\.5"[^>]*font-size="20"[^>]*>LUNA<\/text>/);
+    expect(image).toMatch(/y="134\.5"[^>]*font-size="20"[^>]*>LUNA<\/text>/);
     expect(image).not.toContain("NEXT");
     expect(image).not.toContain("<circle");
     expect(image).not.toContain("<line");
@@ -171,8 +171,8 @@ describe("key renderer", () => {
         { label: "Sol", model: "gpt-5.6-sol" },
       ),
     );
-    expect(titled).toMatch(/y="19\.3"[^>]*>MODEL<\/text>/);
-    expect(titled).toMatch(/y="87\.46"[^>]*>SOL<\/text>/);
+    expect(titled).toMatch(/y="20\.3"[^>]*>MODEL<\/text>/);
+    expect(titled).toMatch(/y="87\.96"[^>]*>SOL<\/text>/);
     expect(titled).not.toContain("<line");
   });
 
@@ -196,7 +196,7 @@ describe("key renderer", () => {
       "HIGH",
     ]);
     expect(lines[2].size).toBe(lines[3].size);
-    expect(lines[3].y).toBe(135.5);
+    expect(lines[3].y).toBe(134.5);
     expect(lines[1].size).toBeLessThanOrEqual(Math.floor(lines[0].size * 0.8));
     expect(image).not.toContain("SOL 5.6");
   });
@@ -289,8 +289,8 @@ describe("key renderer", () => {
       ),
     );
     expect(lines[0].text).toBe("PRESET");
-    expect(lines.at(-1)).toMatchObject({ text: "XHIGH", y: 135.5 });
-    expect(lines[0].y - lines[0].size * 0.72).toBeCloseTo(8.5, 5);
+    expect(lines.at(-1)).toMatchObject({ text: "XHIGH", y: 134.5 });
+    expect(lines[0].y - lines[0].size * 0.72).toBeCloseTo(9.5, 5);
     for (let index = 1; index < lines.length; index += 1)
       expect(lines[index].y - lines[index].size * 0.72).toBeGreaterThan(
         lines[index - 1].y,

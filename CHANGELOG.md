@@ -6,8 +6,9 @@ This file records the user-visible changes in Codex Controls.
 
 - Fit the text to the key by default. The text fills the key to 1 pixel from
   the border, and a long model name breaks into lines. On a Preset key, the
-  thinking level is at most 80% of the model size. Clear **Fit text to key** to
-  set the text sizes.
+  thinking level is at most 80% of the model size. The title and the next value
+  stay 2 pixels from the border. Clear **Fit text to key** to set the text
+  sizes.
 - Show the next value at the bottom of the key, in a larger font, without the
   NEXT or SET prefix, the divider, or the dot. A Preset key shows the next
   model and thinking level on two lines.
