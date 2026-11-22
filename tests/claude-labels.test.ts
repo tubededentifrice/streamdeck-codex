@@ -92,6 +92,8 @@ describe("Claude labels", () => {
     expect(FRONT_APP_SCRIPT).toContain("const claudeModelMatches = function");
     expect(FRONT_APP_SCRIPT).toContain("function applyClaude(");
     expect(FRONT_APP_SCRIPT).toContain("function toggleClaudePanel(");
+    expect(FRONT_APP_SCRIPT).toContain("function toggleT3SideChat(");
+    expect(FRONT_APP_SCRIPT).toContain("function toggleChatGPTReview(");
     expect(FRONT_APP_SCRIPT).toContain("AXApplicationAlertDialog");
     expect(FRONT_APP_SCRIPT).toContain("$.getppid() !== parent");
   });

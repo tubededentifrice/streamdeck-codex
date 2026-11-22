@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import type { ShortcutId } from "../domain/settings";
 import { FRONT_APP_SCRIPT } from "./front-app-script";
 
 export const CLAUDE_BUNDLE_ID = "com.anthropic.claudefordesktop";
@@ -13,6 +14,16 @@ export const T3CODE_BUNDLE_ID = "com.t3tools.t3code";
 export type AgentApp = "chatgpt" | "claude" | "codex" | "t3code";
 /** An app whose composer the plug-in reads and changes through its window. */
 export type ComposerApp = "chatgpt" | "claude" | "t3code";
+
+/** ChatGPT for macOS uses the bundle ID of Codex desktop. */
+export const APP_BUNDLE_IDS: Readonly<Record<AgentApp, string>> = Object.freeze(
+  {
+    chatgpt: CODEX_BUNDLE_ID,
+    claude: CLAUDE_BUNDLE_ID,
+    codex: CODEX_BUNDLE_ID,
+    t3code: T3CODE_BUNDLE_ID,
+  },
+);
 
 export const APP_NAMES: Readonly<Record<AgentApp, string>> = Object.freeze({
   chatgpt: "ChatGPT",
@@ -59,8 +70,8 @@ export type ComposerRequest = Readonly<{
   composer: number;
 }>;
 
-/** A Claude Code session panel, such as "Terminal". */
-export type PanelRequest = Readonly<{ app: "claude"; panel: string }>;
+/** A shortcut that the watcher runs in the app window, such as "side-chat". */
+export type PanelRequest = Readonly<{ app: ComposerApp; panel: ShortcutId }>;
 
 type PendingCommand = {
   app: ComposerApp;
@@ -160,7 +171,7 @@ export class FrontAppWatcher {
     return this.#run(request);
   }
 
-  /** Toggles a Claude Code session panel in the Claude window. */
+  /** Toggles a panel, such as a side chat, in the window of the app. */
   async runPanel(request: PanelRequest): Promise<void> {
     await this.#run(request);
   }

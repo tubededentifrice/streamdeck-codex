@@ -7,6 +7,9 @@ This file records the user-visible changes in Codex Controls.
 - Control Claude for macOS through its window: new and sent chats, Claude Code
   sessions, and cloud sessions. Shortcut keys toggle the Claude Code session
   panels.
+- Toggle the side chat with the Shortcut key in Claude and in T3 Code.
+- Make the Review shortcut a toggle in ChatGPT, and show **UNAVAILABLE** in a
+  chat without a local project.
 - Stop the app watcher process when the plug-in restarts. Before, each restart
   left one more watcher process that kept running.
 - Do not show a false CODEX OFFLINE error on setting keys when the plug-in

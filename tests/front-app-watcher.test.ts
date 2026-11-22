@@ -323,11 +323,11 @@ describe("front app watcher commands", () => {
 
   it("toggles a Claude panel and keeps the Claude label", async () => {
     const { args, children, watcher } = started();
-    const result = watcher.runPanel({ app: "claude", panel: "Terminal" });
+    const result = watcher.runPanel({ app: "claude", panel: "terminal" });
     const command = JSON.parse(
       fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
     );
-    expect(command).toMatchObject({ app: "claude", panel: "Terminal" });
+    expect(command).toMatchObject({ app: "claude", panel: "terminal" });
 
     children[0].stdout.write(`${line({ result: { id: command.id } })}\n`);
     await expect(result).resolves.toBeUndefined();
@@ -337,15 +337,15 @@ describe("front app watcher commands", () => {
 
   it("rejects a Claude panel that the page does not show", async () => {
     const { args, children, watcher } = started();
-    const result = watcher.runPanel({ app: "claude", panel: "Changes" });
+    const result = watcher.runPanel({ app: "claude", panel: "review" });
     const { id } = JSON.parse(
       fs.readFileSync(path.join(args[0][3], "command.json"), "utf8"),
     );
     children[0].stdout.write(
-      `${line({ result: { error: "The Claude Changes panel is not available.", id } })}\n`,
+      `${line({ result: { error: "The Claude Changes panel is not available here.", id } })}\n`,
     );
     await expect(result).rejects.toThrow(
-      "The Claude Changes panel is not available.",
+      "The Claude Changes panel is not available here.",
     );
     watcher.stop();
   });

@@ -27,6 +27,7 @@ const THREAD_PAGE = new RegExp("#/(?:threads/)?[^/]+/[^/]+/?$");
 const APPS = {
   chatgpt: {
     apply: (app, button, request) => applyChatGPT(app.element, app.pid, button, request),
+    panels: { review: (app, area) => toggleChatGPTReview(app.element, app.pid, area) },
     isButton: (element) => Boolean(string(element, "AXTitle")) && !string(element, "AXDescription"),
     label: chatgptLabel,
     name: "ChatGPT",
@@ -35,6 +36,13 @@ const APPS = {
   },
   claude: {
     apply: (app, button, request) => applyClaude(app.element, button, request),
+    panels: {
+      browser: (app) => toggleClaudePanel(app.element, "Browser"),
+      files: (app) => toggleClaudePanel(app.element, "Files"),
+      review: (app) => toggleClaudePanel(app.element, "Changes"),
+      "side-chat": (app) => toggleClaudePanel(app.element, "Side Chat"),
+      terminal: (app) => toggleClaudePanel(app.element, "Terminal"),
+    },
     isButton: isClaudeButton,
     label: claudeLabel,
     name: "Claude",
@@ -43,6 +51,7 @@ const APPS = {
   },
   t3code: {
     apply: (app, button, request) => applyComposer(app.element, button, request),
+    panels: { "side-chat": (app, area) => toggleT3SideChat(area) },
     isButton: (element) =>
       !string(element, "AXTitle") &&
       children(element).some((child) => string(child, "AXRole") === "AXStaticText"),
@@ -173,8 +182,11 @@ function runCommand(path) {
     const route = area === undefined ? null : APPS[key].route(area.window, area.url);
     if (!route) throw new Error("error:" + name + " shows no chat.");
     if (request.route && request.route !== route) throw new Error("error:The selected task changed before the update.");
-    if (key === "claude" && typeof request.panel === "string") {
-      toggleClaudePanel(pageFor(key).area, request.panel);
+    if (typeof request.panel === "string") {
+      const panels = APPS[key].panels;
+      const panel = Object.prototype.hasOwnProperty.call(panels, request.panel) ? panels[request.panel] : undefined;
+      if (!panel) throw new Error("error:The selected " + name + " shortcut is not available.");
+      panel(app, pageFor(key).area);
       write({ result: { id: request.id } });
       return;
     }

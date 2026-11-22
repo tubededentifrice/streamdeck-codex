@@ -31,13 +31,15 @@ not send task content to the plug-in author.
 
 For T3 Code, the plug-in reads the T3 Code window address and model button
 through macOS Accessibility. It changes the model through the T3 Code model
-picker. It does not connect to a T3 Code server and stores no T3 Code data.
+picker, and it opens side chats in the right panel. It does not connect to a
+T3 Code server and stores no T3 Code data.
 
 For ChatGPT, the plug-in reads the window title and the model button through
 macOS Accessibility. It changes the model and thinking level through the
-ChatGPT model picker. It stores no ChatGPT data.
+ChatGPT model picker, and it reads the Changes tab for the Review shortcut. It
+stores no ChatGPT data.
 
 For Claude, the plug-in reads the window address and the model button through
 macOS Accessibility. It changes the model and effort through the Claude model
-picker, and it toggles the Claude Code session panels. It does not connect to
-Claude servers and stores no Claude data.
+picker, and it toggles panels through the Claude View menu. It does not
+connect to Claude servers and stores no Claude data.

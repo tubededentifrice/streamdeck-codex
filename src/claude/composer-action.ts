@@ -6,7 +6,7 @@ import {
 } from "./labels";
 
 // JXA functions that set the model and effort in a Claude composer and toggle
-// the Claude Code session panels. The front app watcher runs them, so the
+// the Claude panels. The front app watcher runs them, so the
 // window and the model button are already known. They need AX_HELPERS.
 //
 // The model button opens a menu: the main models, an "Effort" item with a
@@ -158,14 +158,23 @@ function applyClaude(application, button, request) {
   }
   return claudeLabel(button) || "";
 }
-// Toggles a Claude Code session panel, such as "Terminal", in the session
-// tools of the page.
-function toggleClaudePanel(area, panel) {
-  const toggle = find(
-    area,
-    (e) => string(e, "AXSubrole") === "AXToggleButton" && string(e, "AXTitle") === panel,
-  );
-  if (toggle === undefined) throw new Error("error:The Claude " + panel + " panel is not available.");
-  if (!press(toggle)) throw new Error("error:Claude did not open the " + panel + " panel.");
+// Toggles a Claude panel, such as "Terminal" or "Side Chat", through its
+// "Show" or "Hide" item in the View menu. Claude disables the item where the
+// panel is not available, such as a chat.
+function toggleClaudePanel(application, panel) {
+  const fail = (message) => {
+    throw new Error("error:" + message);
+  };
+  const titles = ["Show " + panel, "Hide " + panel];
+  let item;
+  const bar = copy(application, "AXMenuBar");
+  if (bar !== undefined && !bar.isNil())
+    for (const top of children(bar)) {
+      if (string(top, "AXTitle") !== "View") continue;
+      for (const menu of children(top))
+        item = item || children(menu).find((e) => titles.includes(string(e, "AXTitle")));
+    }
+  if (item === undefined || string(item, "AXEnabled") !== "true") fail("The Claude " + panel + " panel is not available here.");
+  if (!press(item)) fail("Claude did not open the " + panel + " panel.");
 }
 `;

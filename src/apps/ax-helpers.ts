@@ -43,6 +43,11 @@ function pause(seconds) {
 function press(element) {
   return $.AXUIElementPerformAction(element, $("AXPress")) === 0;
 }
+// Sends a key without modifiers to the process, also when the app is in the
+// background. The key goes to the element that has the focus in the app.
+function postKey(pid, code) {
+  for (const down of [true, false]) $.CGEventPostToPid(pid, $.CGEventCreateKeyboardEvent(null, code, down));
+}
 const normalizeLabel = ${normalizeLabel.toString()};
 function find(root, test) {
   let found;
@@ -62,6 +67,21 @@ function findAll(root, test) {
     if (depth > 40) return;
     if (test(element)) found.push(element);
     for (const child of children(element)) walk(child, depth + 1);
+  })(root, 0);
+  return found;
+}
+// Like find, but a long list, such as the messages of a thread, is searched
+// only in its last items. Use it for controls outside the messages.
+function findInPage(root, test) {
+  let found;
+  (function walk(element, depth) {
+    if (found || depth > 60) return;
+    if (test(element)) {
+      found = element;
+      return;
+    }
+    const list = children(element);
+    for (const child of list.length > 25 ? list.slice(-3) : list) walk(child, depth + 1);
   })(root, 0);
   return found;
 }

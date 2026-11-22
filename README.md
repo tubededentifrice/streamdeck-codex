@@ -120,6 +120,8 @@ as T3 Code.
   this Mac and on each remote host, then restart ChatGPT.
 - Shortcut keys use the standard ChatGPT keyboard commands. These commands are
   the same as in Codex desktop.
+- Review opens the Changes tab, and closes it when it is the active tab. A chat
+  without a local project has no review, so the key shows **UNAVAILABLE**.
 
 The window title identifies the open chat, because ChatGPT does not show the
 chat ID to Accessibility. A key press opens the model picker briefly and then
@@ -144,9 +146,11 @@ T3 Code.
   `max`. A model without effort levels, such as some cloud session models,
   shows no thinking level. When Claude asks you to confirm an effort, such as
   "Use Extra", the key confirms the effort that it sets.
-- Shortcut keys toggle the Claude Code session panels: Review (Changes),
-  Terminal, Browser, and Files. Then Claude comes to the front. Claude has no
-  side chat. A chat has no session panels.
+- Shortcut keys toggle Review (Changes), Terminal, Browser, Files, and Side
+  chat through the Claude **View** menu. Then Claude comes to the front. Where
+  Claude disables the menu item, such as in a chat, the key shows
+  **UNAVAILABLE**.
+- A Claude side chat has no model button. The keys keep the session values.
 
 The page address identifies the open chat or session. A key press opens the
 Claude model picker briefly and then returns the focus to where it was. This
@@ -168,11 +172,13 @@ the front: ChatGPT, Claude, Codex desktop, or T3 Code.
   matches them with the names in the T3 Code model picker, such as
   "GPT-6.2-Sol" or "Claude Opus 5.5".
 - Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
-  use your T3 Code key bindings. T3 Code has no side chat.
+  use your T3 Code key bindings.
+- Side chat has no T3 Code key binding. The key closes an open side chat, or
+  adds a side chat to the right panel and gives its message field the focus.
 
-The plug-in uses only the T3 Code, ChatGPT, and Claude windows on this Mac. It reads the
-model button of the composer and selects items in the model picker through
-macOS Accessibility. It does not connect to a T3 Code server. Allow Stream Deck
+The plug-in uses only the T3 Code, ChatGPT, and Claude windows on this Mac. It
+reads the model button of the composer and selects items in the model picker
+through macOS Accessibility. It does not connect to a T3 Code server. Allow Stream Deck
 in **System Settings > Privacy & Security > Accessibility**. Without this
 permission, the keys show **ALLOW ACCESS**.
 
