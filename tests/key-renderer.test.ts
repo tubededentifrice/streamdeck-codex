@@ -6,6 +6,7 @@ import {
   renderKey,
   renderLoading,
   renderShortcutKey,
+  renderSingleKey,
 } from "../src/ui/key-renderer";
 
 describe("key renderer", () => {
@@ -434,5 +435,63 @@ describe("key renderer", () => {
         ),
       ),
     ).toContain("UNAVAILABLE");
+  });
+
+  it("shows a single preset with a border while it is active", () => {
+    const style = {
+      backgroundColor: "#204080",
+      borderColor: "#445566",
+      fontColor: "#FFFFFF",
+      id: "custom:test",
+      name: "Test",
+    };
+    const preset = { effort: "high", label: "Luna", model: "gpt-5.6-luna" };
+    const active = decodeURIComponent(renderSingleKey(preset, true, style));
+    expect(active).toContain('fill="#204080"');
+    expect(active).toContain('stroke="#445566"');
+    expect(active).toContain('fill="#FFFFFF"');
+    expect(active).toContain(">PRESET<");
+    expect(active).toContain(">LUNA<");
+    expect(active).toContain(">HIGH<");
+    expect(active).not.toContain("NEXT");
+    expect(active).not.toContain(" SET ");
+
+    const inactive = decodeURIComponent(renderSingleKey(preset, false, style));
+    expect(inactive).not.toContain("stroke=");
+    expect(inactive).toContain('fill="#081020"');
+    expect(inactive).toContain('fill="#404040"');
+    expect(inactive).toContain(">LUNA<");
+    expect(inactive).toContain(">HIGH<");
+  });
+
+  it("fades an inactive single preset by the configured amount", () => {
+    const preset = { effort: "high", label: "Luna", model: "gpt-5.6-luna" };
+    const render = (inactiveFade: number) =>
+      decodeURIComponent(
+        renderSingleKey(preset, false, undefined, undefined, {
+          inactiveFade,
+          showTitle: false,
+        }),
+      );
+    expect(render(0)).toContain('fill="#ffffff"');
+    expect(render(50)).toContain('fill="#808080"');
+    expect(render(100)).toContain('fill="#000000"');
+    expect(render(250)).toContain('fill="#000000"');
+    expect(render(-10)).toContain('fill="#ffffff"');
+    expect(render(0)).not.toContain(">PRESET<");
+  });
+
+  it("blinks the border of a single preset after a press", () => {
+    const preset = { effort: "high", label: "Luna", model: "gpt-5.6-luna" };
+    expect(
+      decodeURIComponent(renderSingleKey(preset, true, undefined, "#ffffff")),
+    ).toContain('stroke="#ffffff"');
+  });
+
+  it("uses the Preset title for single preset statuses", () => {
+    expect(decodeURIComponent(renderLoading("single"))).toContain(">PRESET<");
+    expect(
+      decodeURIComponent(renderError("single", new Error("Offline"))),
+    ).toContain(">PRESET<");
   });
 });

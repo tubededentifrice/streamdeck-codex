@@ -7,12 +7,15 @@ const uiDirectory = new URL(
 );
 
 describe("property inspector visibility", () => {
-  it("hides the add button for the single-value Shortcut action", () => {
+  it("hides the add button for the single-value actions", () => {
     const script = readFileSync(new URL("action.js", uiDirectory), "utf8");
     const styles = readFileSync(new URL("action.css", uiDirectory), "utf8");
 
     expect(script).toContain(
-      'document.querySelector("#add").hidden = kind === "shortcut";',
+      'const singleValue = () => kind === "shortcut" || kind === "single";',
+    );
+    expect(script).toContain(
+      'document.querySelector(".add-row").hidden = singleValue();',
     );
     expect(styles).toMatch(/\[hidden\]\s*{\s*display:\s*none\s*!important;/);
   });

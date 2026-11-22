@@ -23,8 +23,9 @@ cycle through them in your chosen order.
 Each setting key shows the current value and the value that the next press will
 set. For a local task, the Model action changes the model, the Thinking action
 changes the thinking level, and the Preset action changes both values. The
-Shortcut action opens one selected Review, Terminal, Browser, Files, or Side
-chat view.
+Single Preset action sets one preset and dims while the task uses other values.
+The Shortcut action opens one selected Review, Terminal, Browser, Files, or
+Side chat view.
 
 Codex Controls detects local and remote tasks through Codex desktop. It shows
 remote task values, but this release does not change them. You do not need to
@@ -39,7 +40,7 @@ turn that is already in progress.
 
 ## Feature list
 
-- Model, Thinking, combined Preset, and Shortcut actions.
+- Model, Thinking, combined Preset, Single Preset, and Shortcut actions.
 - Direct set with one value.
 - Ordered cycling with two or more values.
 - One selected command on each Shortcut key.

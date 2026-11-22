@@ -129,6 +129,15 @@ abstract class CodexAction extends SingletonAction<ActionSettings> {
         : this.kind === "thinking"
           ? "thinking"
           : "presets";
+    if (this.kind === "single") {
+      result.showNext = false;
+      if (Array.isArray(result.presets))
+        result.presets = result.presets.slice(0, 1).map((preset) => {
+          const value = { ...preset };
+          delete value.enabled;
+          return value;
+        });
+    }
     const values = result[key];
     if (Array.isArray(values))
       for (const [index, value] of values.entries()) {
@@ -211,4 +220,9 @@ export class ThinkingAction extends CodexAction {
 @action({ UUID: "com.courcelle.codex-controls.preset" })
 export class PresetAction extends CodexAction {
   readonly kind = "preset" as const;
+}
+
+@action({ UUID: "com.courcelle.codex-controls.single-preset" })
+export class SinglePresetAction extends CodexAction {
+  readonly kind = "single" as const;
 }

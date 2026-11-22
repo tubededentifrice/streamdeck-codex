@@ -193,4 +193,20 @@ describe("key styles", () => {
       ),
     ).toBe(NEUTRAL_STYLE);
   });
+
+  it("uses the configured colors of a single preset key in each state", () => {
+    const settings = {
+      presets: [
+        { effort: "high", model: "gpt-5.6-luna", styleId: "custom:night" },
+      ],
+    };
+    const globals = { customStyles: [customStyle] };
+    for (const state of [
+      { effort: "high", model: "gpt-5.6-luna" },
+      { effort: "medium", model: "gpt-5.6-sol" },
+    ])
+      expect(activeStyleFor("single", settings, state, globals).id).toBe(
+        "custom:night",
+      );
+  });
 });

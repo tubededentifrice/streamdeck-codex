@@ -1,6 +1,7 @@
 import type { JsonObject } from "@elgato/utils";
 
-export type SettingsActionKind = "model" | "thinking" | "preset";
+/** `single` sets one preset and shows whether the task uses it. */
+export type SettingsActionKind = "model" | "thinking" | "preset" | "single";
 export type ActionKind = SettingsActionKind | "shortcut";
 export type ShortcutId =
   "review" | "terminal" | "browser" | "files" | "side-chat";
@@ -34,6 +35,8 @@ export type ShortcutChoice = {
 export type ActionSettings = JsonObject & {
   /** The last value catalog revision that this key merged. */
   catalogRevision?: number;
+  /** How much a single preset key fades while the task uses other values (0–100). */
+  inactiveFade?: number;
   modelFontSize?: number;
   models?: ModelChoice[];
   presets?: PresetChoice[];
@@ -90,6 +93,7 @@ export const SHORTCUT_OPTIONS: readonly Readonly<ShortcutChoice>[] =
     Object.freeze({ label: "Side chat", shortcut: "side-chat" }),
   ]);
 
+export const DEFAULT_INACTIVE_FADE = 75;
 const MAX_CHOICES = 20;
 const VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const STYLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -144,6 +148,15 @@ export function defaultsFor(kind: ActionKind): ActionSettings {
       shortcutFontSize: 18,
       shortcuts: structuredClone(DEFAULT_SHORTCUTS),
     };
+  if (kind === "single")
+    return {
+      ...display,
+      inactiveFade: DEFAULT_INACTIVE_FADE,
+      modelFontSize: 21,
+      presets: structuredClone(DEFAULT_PRESETS.slice(0, 1)),
+      showNext: false,
+      thinkingFontSize: 18,
+    };
   return {
     ...display,
     modelFontSize: 21,
@@ -161,7 +174,7 @@ export function choicesFor(
   settings: ActionSettings,
 ): ThinkingChoice[];
 export function choicesFor(
-  kind: "preset",
+  kind: "preset" | "single",
   settings: ActionSettings,
 ): PresetChoice[];
 export function choicesFor(
@@ -227,13 +240,15 @@ export function choicesFor(
     return choices;
   }
 
+  // A single preset key uses only its first value, and that value is always on.
+  const single = kind === "single";
   const choices = (
     Array.isArray(settings.presets) ? settings.presets : DEFAULT_PRESETS
   )
-    .slice(0, MAX_CHOICES)
+    .slice(0, single ? 1 : MAX_CHOICES)
     .map((choice) => ({
       effort: cleanValue(choice?.effort),
-      ...(choice?.enabled === false ? { enabled: false } : {}),
+      ...(!single && choice?.enabled === false ? { enabled: false } : {}),
       label: clean(choice?.label, 32),
       model: cleanValue(choice?.model),
       styleId: cleanStyleId(choice?.styleId),
@@ -301,7 +316,7 @@ export function nextChoice(
   state: CodexState,
 ): ThinkingChoice | undefined;
 export function nextChoice(
-  kind: "preset",
+  kind: "preset" | "single",
   settings: ActionSettings,
   state: CodexState,
 ): PresetChoice | undefined;

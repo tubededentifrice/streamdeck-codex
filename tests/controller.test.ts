@@ -191,3 +191,75 @@ describe("Codex controller refresh", () => {
     expect(showAlert).not.toHaveBeenCalled();
   });
 });
+
+describe("Codex controller single preset", () => {
+  function staticClient(state: { current: CodexState }) {
+    return {
+      routeRevision: 1,
+      onChange: () => () => undefined,
+      readState: vi.fn(async () => state.current),
+      restoreRoute: () => undefined,
+      update: vi.fn(async (model: string, effort: string) => {
+        state.current = { ...state.current, effort, model };
+        return state.current;
+      }),
+    };
+  }
+
+  const settings: ActionSettings = {
+    ...defaultsFor("single"),
+    presets: [
+      {
+        effort: "high",
+        label: "Luna",
+        model: "gpt-5.6-luna",
+        styleId: "builtin:violet",
+      },
+    ],
+  };
+
+  it("fades the key while the task uses other values", async () => {
+    const state = { current: LOCAL };
+    const controller = new CodexController(staticClient(state), fakeStyles());
+    const { action, images } = fakeAction();
+    await controller.show(action, "single", settings);
+    const image = decodeURIComponent(images.at(-1)!);
+    expect(image).toContain(">LUNA<");
+    expect(image).not.toContain("stroke=");
+  });
+
+  it("shows the key as active when the task uses its preset", async () => {
+    const state = { current: REMOTE };
+    const controller = new CodexController(staticClient(state), fakeStyles());
+    const { action, images } = fakeAction();
+    await controller.show(action, "single", settings);
+    expect(decodeURIComponent(images.at(-1)!)).toContain('stroke="#A78BFA"');
+  });
+
+  it("sets its preset on a press and then shows the active state", async () => {
+    const state = { current: LOCAL };
+    const client = staticClient(state);
+    const controller = new CodexController(client, fakeStyles());
+    const { action, images } = fakeAction();
+    await controller.show(action, "single", settings);
+    await controller.press(action, "single", settings);
+    expect(client.update).toHaveBeenCalledWith(
+      "gpt-5.6-luna",
+      "high",
+      LOCAL.threadId,
+      LOCAL.hostId,
+    );
+    expect(decodeURIComponent(images.at(-1)!)).toContain('stroke="#A78BFA"');
+  });
+
+  it("asks for valid settings when the preset is not valid", async () => {
+    const state = { current: LOCAL };
+    const controller = new CodexController(staticClient(state), fakeStyles());
+    const { action, images } = fakeAction();
+    await controller.show(action, "single", {
+      ...settings,
+      presets: [{ effort: "high", label: "Luna", model: "" }],
+    });
+    expect(decodeURIComponent(images.at(-1)!)).toContain("CHECK SETTINGS");
+  });
+});

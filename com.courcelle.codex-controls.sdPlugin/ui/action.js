@@ -38,13 +38,24 @@
         styleId: "builtin:emerald",
       },
     ],
+    single: [
+      {
+        label: "Sol",
+        model: "gpt-5.6-sol",
+        effort: "medium",
+        styleId: "builtin:ocean",
+      },
+    ],
   };
   const settingKey = {
     model: "models",
     thinking: "thinking",
     preset: "presets",
     shortcut: "shortcuts",
+    single: "presets",
   };
+  // A Shortcut or Single Preset key has exactly one value and no cycle.
+  const singleValue = () => kind === "shortcut" || kind === "single";
   const shortcutOptions = [
     ["review", "Review"],
     ["terminal", "Terminal"],
@@ -97,7 +108,9 @@
         ? "thinking"
         : actionInfo.action.endsWith(".shortcut")
           ? "shortcut"
-          : "preset";
+          : actionInfo.action.endsWith(".single-preset")
+            ? "single"
+            : "preset";
     settings = actionInfo.payload.settings || {};
     const key = settingKey[kind];
     if (!Array.isArray(settings[key]) || settings[key].length === 0)
@@ -110,6 +123,13 @@
       settings[key] = [configured || structuredClone(defaults.shortcut[0])];
       settings.showNext = false;
     }
+    if (kind === "single") {
+      const [preset] = settings[key];
+      if (preset && typeof preset === "object") delete preset.enabled;
+      settings[key] = [preset || structuredClone(defaults.single[0])];
+      settings.showNext = false;
+      settings.inactiveFade = validFade(settings.inactiveFade);
+    }
     const normalizedSettingsChanged =
       settingsBeforeNormalization !== JSON.stringify(settings);
     websocket = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -118,15 +138,17 @@
         JSON.stringify({ event: registerEvent, uuid: inspectorId }),
       );
       sendToPlugin({ type: "styles/get" });
-      if (kind !== "shortcut") {
+      if (!singleValue()) {
         sendToPlugin({ type: "state/get" });
         window.setInterval(() => sendToPlugin({ type: "state/get" }), 1500);
       }
-      document.querySelector("#intro").textContent =
+      const intro = document.querySelector("#intro");
+      intro.hidden = kind === "single";
+      intro.textContent =
         kind === "shortcut"
           ? "Select the Codex shortcut that this key opens."
           : "Add one value for a direct set key. Add more values to cycle in this order.";
-      document.querySelector("#add").hidden = kind === "shortcut";
+      document.querySelector(".add-row").hidden = singleValue();
       renderDisplayOptions();
       render();
       if (normalizedSettingsChanged) save();
@@ -254,7 +276,7 @@
     const added = list.filter((value) => !known.has(identity(value)));
     if (Number.isFinite(incoming.catalogRevision))
       settings.catalogRevision = incoming.catalogRevision;
-    if (added.length === 0) return;
+    if (added.length === 0 || singleValue()) return;
     values().push(...added.map((value) => structuredClone(value)));
     render();
   }
@@ -361,7 +383,11 @@
     document.querySelector("#show-title").checked =
       settings.showTitle !== false;
     document.querySelector("#show-next").checked = settings.showNext !== false;
-    document.querySelector("#show-next-row").hidden = kind === "shortcut";
+    document.querySelector("#show-next-row").hidden = singleValue();
+    document.querySelector("#fade-row").hidden = kind !== "single";
+    document.querySelector("#inactive-fade").value = validFade(
+      settings.inactiveFade,
+    );
     const modelFontRow = document.querySelector("#model-font-row");
     const thinkingFontRow = document.querySelector("#thinking-font-row");
     const shortcutFontRow = document.querySelector("#shortcut-font-row");
@@ -374,12 +400,38 @@
     );
     document.querySelector("#thinking-font-size").value = validFontSize(
       settings.thinkingFontSize,
-      kind === "preset" ? 18 : 21,
+      hasPresetLayout() ? 18 : 21,
     );
     document.querySelector("#shortcut-font-size").value = validFontSize(
       settings.shortcutFontSize,
       18,
     );
+  }
+
+  function hasPresetLayout() {
+    return kind === "preset" || kind === "single";
+  }
+
+  // Same default and range as the plug-in key renderer.
+  function validFade(value) {
+    return Number.isFinite(value)
+      ? Math.max(0, Math.min(100, Math.round(value)))
+      : 75;
+  }
+
+  // Mixes a #RRGGBB color toward black, as the unlit key around it.
+  function fadeColor(color, fade) {
+    const match = /^#([0-9a-f]{6})$/i.exec(color);
+    if (!match || fade === 0) return color;
+    const value = Number.parseInt(match[1], 16);
+    const keep = 1 - fade / 100;
+    return `#${[16, 8, 0]
+      .map((shift) =>
+        Math.round(((value >> shift) & 0xff) * keep)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")}`;
   }
 
   function validFontSize(value, fallback) {
@@ -505,21 +557,28 @@
     });
   }
 
-  function createKeyPreview(value, style, index) {
+  // `inactive` shows a Single Preset key while the task uses other values.
+  function createKeyPreview(value, style, index, inactive = false) {
     const preview = document.createElement("div");
     preview.className = "key-preview";
     preview.dataset.choiceIndex = String(index);
     preview.setAttribute("aria-hidden", "true");
 
-    const backgroundColor = style?.backgroundColor || "#303030";
-    const borderColor = style?.borderColor || "#a3a3a3";
-    const fontColor = style?.fontColor || "#f5f5f5";
+    const fade = inactive ? validFade(settings.inactiveFade) : 0;
+    const backgroundColor = fadeColor(
+      style?.backgroundColor || "#303030",
+      fade,
+    );
+    const borderColor = inactive
+      ? backgroundColor
+      : style?.borderColor || "#a3a3a3";
+    const fontColor = fadeColor(style?.fontColor || "#f5f5f5", fade);
     const showTitle = settings.showTitle !== false;
-    const showNext = kind !== "shortcut" && settings.showNext !== false;
+    const showNext = !singleValue() && settings.showNext !== false;
 
     const title = document.createElement("span");
     title.className = "preview-title";
-    title.textContent = kind.toUpperCase();
+    title.textContent = kind === "single" ? "PRESET" : kind.toUpperCase();
 
     const current = document.createElement("span");
     current.className = "preview-current";
@@ -545,7 +604,7 @@
       7,
       Math.round(secondaryFontSize * 0.45),
     )}px`;
-    secondary.hidden = kind !== "preset";
+    secondary.hidden = !hasPresetLayout();
     const divider = document.createElement("span");
     divider.className = "preview-divider";
 
@@ -577,7 +636,7 @@
         showTitle,
         showNext,
         primaryFontSize,
-        kind === "preset" ? secondaryFontSize : undefined,
+        hasPresetLayout() ? secondaryFontSize : undefined,
       );
       title.style.top = `${((layout.headerCenter ?? 0) / 144) * 100}%`;
       current.style.top = `${(layout.primaryCenter / 144) * 100}%`;
@@ -620,7 +679,19 @@
     const selectedName = document.createElement("span");
     selectedName.className = "selected-style-name";
     selectedName.textContent = selectedStyle?.name || "Unavailable preset";
-    summary.append(selectedName, createKeyPreview(value, selectedStyle, index));
+    if (kind === "single") {
+      const pair = document.createElement("span");
+      pair.className = "preview-pair";
+      pair.append(
+        createKeyPreview(value, selectedStyle, index),
+        createKeyPreview(value, selectedStyle, index, true),
+      );
+      summary.append(selectedName, pair);
+    } else
+      summary.append(
+        selectedName,
+        createKeyPreview(value, selectedStyle, index),
+      );
     picker.append(summary);
 
     const panel = document.createElement("div");
@@ -687,16 +758,16 @@
       } else if (kind !== "thinking")
         inputRow(
           choice,
-          kind === "preset" ? "Model label" : "Label",
+          hasPresetLayout() ? "Model label" : "Label",
           "label",
           value,
-          kind === "preset" ? "Sol" : "Short key label",
+          hasPresetLayout() ? "Sol" : "Short key label",
         );
       if (kind !== "thinking" && kind !== "shortcut")
         inputRow(choice, "Model", "model", value, "gpt-5.6-sol");
       if (kind !== "model" && kind !== "shortcut") thinkingRow(choice, value);
       styleRow(choice, value, index);
-      if (kind === "shortcut") {
+      if (singleValue()) {
         container.append(choice);
         return;
       }
@@ -757,7 +828,7 @@
   }
 
   document.querySelector("#add").addEventListener("click", () => {
-    if (kind === "shortcut") return;
+    if (singleValue()) return;
     if (values().length >= 20) return;
     const styleId =
       styleCatalog.builtInStyles[values().length % 16]?.id ||
@@ -807,7 +878,7 @@
       const fallback =
         setting === "shortcutFontSize"
           ? 18
-          : setting === "modelFontSize" || kind !== "preset"
+          : setting === "modelFontSize" || !hasPresetLayout()
             ? 21
             : 18;
       const value = validFontSize(event.currentTarget.valueAsNumber, fallback);
@@ -817,6 +888,16 @@
       save();
     });
   }
+
+  document
+    .querySelector("#inactive-fade")
+    .addEventListener("change", (event) => {
+      const value = validFade(event.currentTarget.valueAsNumber);
+      event.currentTarget.value = value;
+      settings.inactiveFade = value;
+      render();
+      save();
+    });
 
   const customSelect = document.querySelector("#custom-style");
   const styleName = document.querySelector("#style-name");

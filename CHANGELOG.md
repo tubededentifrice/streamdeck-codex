@@ -4,6 +4,9 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+- Add a Single Preset control. It sets one model and thinking level. It has a
+  border while the task uses this preset, and fades without a border while the
+  task uses other values. Set the fade in **Inactive fade** (75% by default).
 - Control ChatGPT for macOS through its window: new chats, remote chats, and
   side chats.
 - Change the ChatGPT model through the model list with keyboard input, also

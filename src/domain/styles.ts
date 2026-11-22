@@ -150,6 +150,8 @@ export function activeStyleFor(
   state: Pick<CodexState, "effort" | "model">,
   globalSettings: Pick<PluginGlobalSettings, "customStyles"> = {},
 ): KeyStyle {
+  if (kind === "single")
+    return resolveStyleById(settings.presets?.[0]?.styleId, globalSettings);
   const choices =
     kind === "model"
       ? settings.models

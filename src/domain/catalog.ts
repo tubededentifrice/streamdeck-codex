@@ -173,7 +173,7 @@ export function catalogValuesOf(
         label,
       })),
     };
-  const presets = choicesFor("preset", settings);
+  const presets = choicesFor(kind, settings);
   return {
     efforts: presets.map(({ effort }) => ({ effort })),
     models: presets.map(({ label, model }) => ({ label, model })),

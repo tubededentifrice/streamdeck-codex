@@ -6,13 +6,20 @@ import type {
   SettingsActionKind,
 } from "../domain/settings";
 import {
+  choicesFor,
   cycleChoices,
   displayChoice,
+  matchesChoice,
   nextChoice,
   targetState,
 } from "../domain/settings";
 import { activeStyleFor } from "../domain/styles";
-import { renderError, renderKey, renderLoading } from "../ui/key-renderer";
+import {
+  renderError,
+  renderKey,
+  renderLoading,
+  renderSingleKey,
+} from "../ui/key-renderer";
 import { styleService } from "../ui/style-service";
 import { AgentClient } from "../apps/agent-client";
 import { frontAppWatcher } from "../apps/front-app-watcher";
@@ -265,29 +272,44 @@ export class CodexController {
     await Promise.all(
       [...this.#visible.values()].map(async ({ action, kind, settings }) => {
         if (this.#busy.get(action.id)?.routeRevision === routeRevision) return;
-        const count = cycleChoices(kind, settings).length;
-        const next = nextChoice(kind as "preset", settings, state);
-        const current = displayChoice(kind, settings, state);
-        const style = activeStyleFor(
-          kind,
-          settings,
-          state,
-          this.#styles.settings,
-        );
-        await this.#setImage(
-          action,
-          renderKey(
-            kind,
-            state,
-            next,
-            count,
-            style,
-            undefined,
-            settings,
-            current,
-          ),
-        );
+        await this.#setImage(action, this.#keyImage(kind, settings, state));
       }),
+    );
+  }
+
+  #keyImage(
+    kind: SettingsActionKind,
+    settings: ActionSettings,
+    state: CodexState,
+    borderColor?: string,
+  ): string {
+    const style = activeStyleFor(kind, settings, state, this.#styles.settings);
+    if (kind === "single") {
+      const [preset] = choicesFor("single", settings);
+      if (!preset)
+        return renderError(
+          kind,
+          new Error("Add a valid choice in the key settings."),
+          "refresh",
+          settings,
+        );
+      return renderSingleKey(
+        preset,
+        matchesChoice(kind, preset, state),
+        style,
+        borderColor,
+        settings,
+      );
+    }
+    return renderKey(
+      kind,
+      state,
+      nextChoice(kind as "preset", settings, state),
+      cycleChoices(kind, settings).length,
+      style,
+      borderColor,
+      settings,
+      displayChoice(kind, settings, state),
     );
   }
 
@@ -333,30 +355,8 @@ export class CodexController {
     settings: ActionSettings,
     state: CodexState,
   ): Promise<void> {
-    const count = cycleChoices(kind, settings).length;
-    const next = nextChoice(kind as "preset", settings, state);
-    const current = displayChoice(kind, settings, state);
-    const style = activeStyleFor(kind, settings, state, this.#styles.settings);
-    const normal = renderKey(
-      kind,
-      state,
-      next,
-      count,
-      style,
-      undefined,
-      settings,
-      current,
-    );
-    const bright = renderKey(
-      kind,
-      state,
-      next,
-      count,
-      style,
-      "#ffffff",
-      settings,
-      current,
-    );
+    const normal = this.#keyImage(kind, settings, state);
+    const bright = this.#keyImage(kind, settings, state, "#ffffff");
     for (let blink = 0; blink < 3; blink += 1) {
       await this.#setImage(action, bright);
       await new Promise((resolve) => setTimeout(resolve, 55));

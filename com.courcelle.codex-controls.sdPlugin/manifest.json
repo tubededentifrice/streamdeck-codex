@@ -38,6 +38,20 @@
       ]
     },
     {
+      "Name": "Single Preset",
+      "UUID": "com.courcelle.codex-controls.single-preset",
+      "Icon": "imgs/actions/single-preset/icon",
+      "Tooltip": "Set one model and thinking preset for the selected Codex task. The key dims while the task uses other values.",
+      "PropertyInspectorPath": "ui/action.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/single-preset/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
       "Name": "Shortcut",
       "UUID": "com.courcelle.codex-controls.shortcut",
       "Icon": "imgs/actions/shortcut/icon",

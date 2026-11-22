@@ -172,4 +172,50 @@ describe("choice settings", () => {
     ]);
     expect(nextChoice("model", settings, current)?.model).toBe("gpt-5.6-luna");
   });
+
+  it("keeps only the first preset of a single preset key, always on", () => {
+    expect(defaultsFor("single")).toMatchObject({
+      inactiveFade: 75,
+      showNext: false,
+      showTitle: true,
+    });
+    expect(choicesFor("single", defaultsFor("single"))).toEqual([
+      {
+        effort: "medium",
+        label: "Sol",
+        model: "gpt-5.6-sol",
+        styleId: "builtin:ocean",
+      },
+    ]);
+    const settings = {
+      presets: [
+        {
+          effort: "high",
+          enabled: false,
+          label: "Luna",
+          model: "gpt-5.6-luna",
+        },
+        { effort: "medium", label: "Sol", model: "gpt-5.6-sol" },
+      ],
+    };
+    expect(choicesFor("single", settings)).toEqual([
+      { effort: "high", label: "Luna", model: "gpt-5.6-luna" },
+    ]);
+    expect(nextChoice("single", settings, current)?.model).toBe("gpt-5.6-luna");
+    expect(
+      nextChoice("single", settings, {
+        ...current,
+        effort: "high",
+        model: "gpt-5.6-luna",
+      })?.model,
+    ).toBe("gpt-5.6-luna");
+    expect(
+      choicesFor("single", {
+        presets: [
+          { effort: "", label: "Bad", model: "gpt-5.6-luna" },
+          { effort: "medium", label: "Sol", model: "gpt-5.6-sol" },
+        ],
+      }),
+    ).toEqual([]);
+  });
 });

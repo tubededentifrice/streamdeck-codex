@@ -11,6 +11,8 @@ the current values for local and remote tasks on macOS.
 - Use **Model** to change only the model.
 - Use **Thinking** to change only the thinking level.
 - Use **Preset** to change the model and thinking level together.
+- Use **Single Preset** to set one model and thinking level. The key shows
+  whether the task uses this preset.
 - Use **Shortcut** to open Review, Terminal, Browser, Files, or Side chat.
 - Add one value to make a direct Model, Thinking, or Preset key.
 - Add two or more values to a setting key to cycle through them in your chosen
@@ -32,7 +34,8 @@ not change a response that Codex is already generating.
 
 ## Configure a key
 
-1. Drag Model, Thinking, Preset, or Shortcut from **Codex Controls** to a key.
+1. Drag Model, Thinking, Preset, Single Preset, or Shortcut from
+   **Codex Controls** to a key.
 2. Select the key in Stream Deck.
 3. For Model, Thinking, or Preset, add the values in the order that you want.
 4. Set a short label and a color for each value.
@@ -55,6 +58,12 @@ Thinking key. Shared values are added once, with **Cycle** cleared. A value
 that you remove from a key does not come back.
 
 For a Shortcut key, select the one Codex shortcut that the key opens.
+
+A Single Preset key has one preset and always shows it. While the task uses
+this model and thinking level, the key has its full colors and a border. While
+the task uses other values, the key fades and has no border. **Inactive fade**
+sets how much the key fades, from 0% to 100%. The default is 75%. A press sets
+the preset.
 
 If the current Codex value is not in the configured list, the key uses a gray
 color scheme. The first press then selects the first configured value.

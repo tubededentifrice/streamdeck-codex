@@ -21,8 +21,13 @@ const COLORS: Record<ActionKind, string> = {
   model: "#2f80ed",
   preset: "#7b61ff",
   shortcut: "#34d399",
+  single: "#a78bfa",
   thinking: "#f2994a",
 };
+
+function titleOf(kind: ActionKind): string {
+  return kind === "single" ? "PRESET" : kind.toUpperCase();
+}
 
 function escapeXml(value: string): string {
   return value.replace(
@@ -42,12 +47,35 @@ function dataUrl(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-function svg(body: string, accent: string, background = "#101319"): string {
+/** Omit `accent` to draw the key without a border. */
+function svg(
+  body: string,
+  accent: string | undefined,
+  background = "#101319",
+): string {
+  const border = accent
+    ? `<rect x="5" y="5" width="134" height="134" rx="15" fill="none" stroke="${accent}" stroke-width="5"/>`
+    : "";
   return dataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
 		<rect width="144" height="144" rx="18" fill="${background}"/>
-		<rect x="5" y="5" width="134" height="134" rx="15" fill="none" stroke="${accent}" stroke-width="5"/>
+		${border}
 		${body}
 	</svg>`);
+}
+
+/** Mixes a #RRGGBB color toward black, as the unlit key around it. */
+function fadeColor(color: string, fade: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match || fade === 0) return color;
+  const value = Number.parseInt(match[1], 16);
+  const keep = 1 - fade / 100;
+  return `#${[16, 8, 0]
+    .map((shift) =>
+      Math.round(((value >> shift) & 0xff) * keep)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 function compactModel(model: string): string {
@@ -88,6 +116,14 @@ function nextLabel(
   if (kind === "thinking")
     return (choice as ThinkingChoice).effort.toUpperCase();
   return (choice as ModelChoice).label.toUpperCase();
+}
+
+// Same default as DEFAULT_INACTIVE_FADE in settings.ts. This module keeps no
+// runtime imports, because the publication script loads it with Node type
+// stripping, which cannot resolve extensionless imports.
+function fadePercent(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 75;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function fontSize(value: unknown, fallback: number): number {
@@ -184,7 +220,7 @@ export function renderKey(
 ): string {
   const [primary, secondary] = currentLines(kind, state, current);
   const target = nextLabel(kind, next);
-  const header = kind.toUpperCase();
+  const header = titleOf(kind);
   const showTitle = display.showTitle !== false;
   const showNext = display.showNext !== false;
   const accent = style?.borderColor ?? COLORS[kind];
@@ -228,6 +264,43 @@ export function renderKey(
 	`,
     borderColor ?? accent,
     style?.backgroundColor,
+  );
+}
+
+/**
+ * A single preset key always shows its own preset. While the task uses other
+ * values, the key fades by `inactiveFade` percent and has no border.
+ */
+export function renderSingleKey(
+  preset: PresetChoice,
+  active: boolean,
+  style?: KeyStyle,
+  borderColor?: string,
+  display: DisplayOptions & { inactiveFade?: number } = {},
+): string {
+  const fade = active ? 0 : fadePercent(display.inactiveFade);
+  const showTitle = display.showTitle !== false;
+  const font = fadeColor(style?.fontColor ?? "#ffffff", fade);
+  const background = fadeColor(style?.backgroundColor ?? "#101319", fade);
+  const primaryFontSize = fontSize(display.modelFontSize, 21);
+  const secondaryFontSize = fontSize(display.thinkingFontSize, 18);
+  const layout = keyLayout(
+    showTitle,
+    false,
+    primaryFontSize,
+    secondaryFontSize,
+  );
+  const headerMarkup = showTitle
+    ? `<text x="72" y="${alphabeticBaseline(layout.headerCenter!, 15)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">${titleOf("single")}</text>`
+    : "";
+  return svg(
+    `
+		${headerMarkup}
+		<text x="72" y="${alphabeticBaseline(layout.primaryCenter, primaryFontSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${primaryFontSize}" font-weight="800">${escapeXml(preset.label.toUpperCase())}</text>
+		<text x="72" y="${alphabeticBaseline(layout.secondaryCenter!, secondaryFontSize)}" text-anchor="middle" fill="${font}" font-family="-apple-system,Arial,sans-serif" font-size="${secondaryFontSize}" font-weight="700">${escapeXml(preset.effort.toUpperCase())}</text>
+	`,
+    active ? (borderColor ?? style?.borderColor ?? COLORS.single) : borderColor,
+    background,
   );
 }
 
@@ -299,7 +372,7 @@ export function renderLoading(
   const centers = stackCenters(sizes, inactive ? 8 : 12);
   let centerIndex = 0;
   const header = showTitle
-    ? `<text x="72" y="${alphabeticBaseline(centers[centerIndex++], 17)}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${kind.toUpperCase()}</text>`
+    ? `<text x="72" y="${alphabeticBaseline(centers[centerIndex++], 17)}" text-anchor="middle" fill="#ffffff" font-family="-apple-system,Arial,sans-serif" font-size="17" font-weight="800">${titleOf(kind)}</text>`
     : "";
   const statusMarkup = statusLines
     .map(
@@ -358,7 +431,7 @@ export function renderError(
   const showKind = display.showTitle !== false;
   const centers = stackCenters(showKind ? [28, 15, 10] : [28, 15], 10);
   const kindMarkup = showKind
-    ? `<text x="72" y="${alphabeticBaseline(centers[2], 10)}" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(kind.toUpperCase())}</text>`
+    ? `<text x="72" y="${alphabeticBaseline(centers[2], 10)}" text-anchor="middle" fill="#aab2bf" font-family="-apple-system,Arial,sans-serif" font-size="10">${escapeXml(titleOf(kind))}</text>`
     : "";
   return svg(
     `

@@ -4,6 +4,7 @@ import {
   ModelAction,
   PresetAction,
   ShortcutAction,
+  SinglePresetAction,
   ThinkingAction,
 } from "./actions/codex-actions";
 import { catalogSync } from "./actions/catalog-sync";
@@ -17,6 +18,7 @@ streamDeck.logger.setLevel("info");
 streamDeck.actions.registerAction(new ModelAction());
 streamDeck.actions.registerAction(new ThinkingAction());
 streamDeck.actions.registerAction(new PresetAction());
+streamDeck.actions.registerAction(new SinglePresetAction());
 streamDeck.actions.registerAction(new ShortcutAction());
 
 await streamDeck.connect();

@@ -34,6 +34,9 @@ p {
 .choice:first-child {
   padding-top: 2px;
 }
+main:has(.add-row[hidden]) .choice:last-child {
+  border-bottom: 0;
+}
 .display-options {
   border: 1px solid #4d4d4d;
   display: flex;
@@ -64,6 +67,12 @@ p {
 .display-options .font-option {
   white-space: nowrap;
   width: 128px;
+}
+.display-options #fade-row {
+  width: auto;
+}
+.display-options #fade-row input {
+  margin-left: 2px;
 }
 .display-options input[type="number"] {
   margin-left: auto;
@@ -152,6 +161,10 @@ p {
   overflow: hidden;
   position: relative;
   width: 72px;
+}
+.preview-pair {
+  display: flex;
+  gap: 6px;
 }
 .style-option .key-preview {
   height: 64px;
