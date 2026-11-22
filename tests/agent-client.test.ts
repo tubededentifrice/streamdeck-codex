@@ -33,13 +33,14 @@ function client(state: CodexState) {
   };
 }
 
-function watcher(app: FrontAppSnapshot["app"]) {
+function watcher(app: FrontAppSnapshot["app"], started = true) {
   const listeners = new Set<() => void>();
   return {
     emit(next: FrontAppSnapshot["app"]) {
-      this.snapshot = { ...this.snapshot, app: next };
+      this.snapshot = { ...this.snapshot, app: next, started: true };
       for (const listener of listeners) listener();
     },
+    listenerCount: () => listeners.size,
     onChange: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -48,7 +49,7 @@ function watcher(app: FrontAppSnapshot["app"]) {
       accessibility: true,
       app,
       chatgpt: { composer: undefined, index: 0, route: undefined },
-      started: true,
+      started,
       t3code: { composer: undefined, index: 0, route: undefined },
     } as FrontAppSnapshot,
   };
@@ -131,5 +132,49 @@ describe("agent client", () => {
     agent.restoreRoute({ hostId: "local", threadId: CODEX.threadId });
 
     expect(codex.restoreRoute).toHaveBeenCalledOnce();
+  });
+
+  it("waits for the first app report before it reads a task", async () => {
+    const codex = client(CODEX);
+    const chatgpt = client(CHATGPT);
+    const view = watcher(undefined, false);
+    const agent = new AgentClient(codex, client(T3), chatgpt, view);
+
+    const read = agent.readState();
+    await Promise.resolve();
+    expect(codex.readState).not.toHaveBeenCalled();
+    view.emit("chatgpt");
+
+    await expect(read).resolves.toBe(CHATGPT);
+    expect(codex.readState).not.toHaveBeenCalled();
+    expect(view.listenerCount()).toBe(1);
+  });
+
+  it("uses Codex when the app watcher does not report in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const codex = client(CODEX);
+      const view = watcher(undefined, false);
+      const agent = new AgentClient(
+        codex,
+        client(T3),
+        client(CHATGPT),
+        view,
+        2000,
+      );
+
+      const first = agent.readState();
+      const second = agent.readState();
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(codex.readState).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(first).resolves.toBe(CODEX);
+      await expect(second).resolves.toBe(CODEX);
+      await expect(agent.readState()).resolves.toBe(CODEX);
+      expect(view.listenerCount()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

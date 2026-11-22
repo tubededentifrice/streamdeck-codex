@@ -4,6 +4,8 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+- Do not show a false CODEX OFFLINE error on setting keys when the plug-in
+  starts with ChatGPT or T3 Code in front.
 - Add a Single Preset control. It sets one model and thinking level. It has a
   border while the task uses this preset, and fades without a border while the
   task uses other values. Set the fade in **Inactive fade** (75% by default).
