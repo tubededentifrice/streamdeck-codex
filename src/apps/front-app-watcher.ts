@@ -6,19 +6,27 @@ import path from "node:path";
 
 import { FRONT_APP_SCRIPT } from "./front-app-script";
 
+export const CLAUDE_BUNDLE_ID = "com.anthropic.claudefordesktop";
 export const CODEX_BUNDLE_ID = "com.openai.codex";
 export const T3CODE_BUNDLE_ID = "com.t3tools.t3code";
 
-export type AgentApp = "chatgpt" | "codex" | "t3code";
+export type AgentApp = "chatgpt" | "claude" | "codex" | "t3code";
 /** An app whose composer the plug-in reads and changes through its window. */
-export type ComposerApp = "chatgpt" | "t3code";
+export type ComposerApp = "chatgpt" | "claude" | "t3code";
+
+export const APP_NAMES: Readonly<Record<AgentApp, string>> = Object.freeze({
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  codex: "Codex",
+  t3code: "T3 Code",
+});
 
 export type ComposerPage = Readonly<{
   /** The model button label, such as "GPT-6.2-Sol, High · Standard". */
   composer: string | undefined;
   /** The composer that the keys follow: 0 for the thread, 1 for a side chat. */
   index: number;
-  /** The open thread: the T3 Code page URL or the ChatGPT window title. */
+  /** The open thread: the T3 Code or Claude page URL, or the ChatGPT window title. */
   route: string | undefined;
 }>;
 
@@ -27,6 +35,7 @@ export type FrontAppSnapshot = Readonly<{
   app: AgentApp | undefined;
   accessibility: boolean;
   chatgpt: ComposerPage;
+  claude: ComposerPage;
   started: boolean;
   t3code: ComposerPage;
 }>;
@@ -50,6 +59,9 @@ export type ComposerRequest = Readonly<{
   composer: number;
 }>;
 
+/** A Claude Code session panel, such as "Terminal". */
+export type PanelRequest = Readonly<{ app: "claude"; panel: string }>;
+
 type PendingCommand = {
   app: ComposerApp;
   reject: (error: Error) => void;
@@ -64,7 +76,10 @@ const EMPTY_PAGE: ComposerPage = {
 };
 
 function appFor(value: unknown): AgentApp | undefined {
-  return value === "chatgpt" || value === "codex" || value === "t3code"
+  return value === "chatgpt" ||
+    value === "claude" ||
+    value === "codex" ||
+    value === "t3code"
     ? value
     : undefined;
 }
@@ -87,10 +102,6 @@ function samePage(left: ComposerPage, right: ComposerPage): boolean {
   );
 }
 
-function appName(app: ComposerApp): string {
-  return app === "chatgpt" ? "ChatGPT" : "T3 Code";
-}
-
 export class FrontAppWatcher {
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingCommand>();
@@ -103,6 +114,7 @@ export class FrontAppWatcher {
     accessibility: false,
     app: undefined,
     chatgpt: EMPTY_PAGE,
+    claude: EMPTY_PAGE,
     started: false,
     t3code: EMPTY_PAGE,
   };
@@ -139,13 +151,23 @@ export class FrontAppWatcher {
   }
 
   /**
-   * Sets the model and thinking level in a T3 Code or ChatGPT composer. The
-   * watcher process runs the change, because it already knows the window and
-   * the model button. Resolves with the final model button label.
+   * Sets the model and thinking level in a T3 Code, ChatGPT, or Claude
+   * composer. The watcher process runs the change, because it already knows
+   * the window and the model button. Resolves with the final model button
+   * label.
    */
   runComposer(request: ComposerRequest): Promise<string> {
+    return this.#run(request);
+  }
+
+  /** Toggles a Claude Code session panel in the Claude window. */
+  async runPanel(request: PanelRequest): Promise<void> {
+    await this.#run(request);
+  }
+
+  #run(request: ComposerRequest | PanelRequest): Promise<string> {
     const directory = this.#commandDirectory;
-    const failure = `${appName(request.app)} did not apply the change.`;
+    const failure = `${APP_NAMES[request.app]} did not apply the change.`;
     if (!this.#child || !directory)
       return Promise.reject(new Error("The app watcher is not running."));
     const id = crypto.randomUUID();
@@ -200,6 +222,7 @@ export class FrontAppWatcher {
       accessibility: message.ax === true,
       app: this.#lastFront ?? (running.length === 1 ? running[0] : undefined),
       chatgpt: front === "chatgpt" ? page : previous.chatgpt,
+      claude: front === "claude" ? page : previous.claude,
       started: true,
       t3code: front === "t3code" ? page : previous.t3code,
     };
@@ -209,6 +232,7 @@ export class FrontAppWatcher {
       previous.app !== next.app ||
       previous.started !== next.started ||
       !samePage(previous.chatgpt, next.chatgpt) ||
+      !samePage(previous.claude, next.claude) ||
       !samePage(previous.t3code, next.t3code)
     )
       for (const listener of this.#listeners) listener();
@@ -243,7 +267,7 @@ export class FrontAppWatcher {
       this.#pending.delete(id);
       pending.reject(
         new Error(
-          message ?? `${appName(pending.app)} did not apply the change.`,
+          message ?? `${APP_NAMES[pending.app]} did not apply the change.`,
         ),
       );
     }

@@ -28,7 +28,7 @@ not change a response that Codex is already generating.
 ## Requirements
 
 - macOS 12 or later.
-- ChatGPT for macOS, Codex desktop, or T3 Code.
+- ChatGPT for macOS, Claude for macOS, Codex desktop, or T3 Code.
 - Elgato Stream Deck 7.1 or later.
 - Node.js 24 for development.
 
@@ -126,10 +126,36 @@ chat ID to Accessibility. A key press opens the model picker briefly and then
 returns the focus to where it was. A ChatGPT update that changes the composer
 can require a plug-in update.
 
+## Claude for macOS
+
+The keys control the Claude desktop app through its window, in the same way as
+T3 Code.
+
+- Model, Thinking, and Preset keys read and change the model and effort in the
+  composer of the open Claude chat or Claude Code session. This includes a new
+  chat or session that you did not send yet, and a cloud session.
+- A change applies to the next message of the chat or session.
+- With two composers open, the keys follow the message field that had the
+  focus last.
+- Use model identifiers such as `claude-opus-5-5` or `claude-sonnet-5-5`. The
+  key matches them with the names in the Claude model picker, such as
+  "Opus 5.5", also in **More models**.
+- The Claude effort levels are `low`, `medium`, `high`, `xhigh` ("Extra"), and
+  `max`. A model without effort levels, such as some cloud session models,
+  shows no thinking level.
+- Shortcut keys toggle the Claude Code session panels: Review (Changes),
+  Terminal, Browser, and Files. Then Claude comes to the front. Claude has no
+  side chat. A chat has no session panels.
+
+The page address identifies the open chat or session. A key press opens the
+Claude model picker briefly and then returns the focus to where it was. This
+also works when Claude is in the background. A Claude update that changes the
+composer can require a plug-in update.
+
 ## T3 Code
 
 The keys also control T3 Code. The keys follow the last app that you brought to
-the front: ChatGPT, Codex desktop, or T3 Code.
+the front: ChatGPT, Claude, Codex desktop, or T3 Code.
 
 - Model, Thinking, and Preset keys read and change the model and thinking level
   in the composer of the open T3 Code thread. This includes a new thread that
@@ -143,7 +169,7 @@ the front: ChatGPT, Codex desktop, or T3 Code.
 - Shortcut keys open Review (diff), Terminal, Browser (preview), and Files. They
   use your T3 Code key bindings. T3 Code has no side chat.
 
-The plug-in uses only the T3 Code and ChatGPT windows on this Mac. It reads the
+The plug-in uses only the T3 Code, ChatGPT, and Claude windows on this Mac. It reads the
 model button of the composer and selects items in the model picker through
 macOS Accessibility. It does not connect to a T3 Code server. Allow Stream Deck
 in **System Settings > Privacy & Security > Accessibility**. Without this
@@ -207,6 +233,7 @@ The main code areas are:
 - `src/apps/` for the frontmost-app watcher and the app router.
 - `src/codex/` for Codex task access and Shortcut keys.
 - `src/chatgpt/` for ChatGPT chat access.
+- `src/claude/` for Claude chat and session access.
 - `src/t3code/` for T3 Code thread access.
 - `src/domain/` for settings and color definitions.
 - `src/ui/` for key rendering.

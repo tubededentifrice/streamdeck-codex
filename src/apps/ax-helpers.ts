@@ -13,6 +13,8 @@ ObjC.bindFunction("AXUIElementSetAttributeValue", ["int", ["id", "id", "id"]]);
 ObjC.bindFunction("AXUIElementPerformAction", ["int", ["id", "id"]]);
 const T3 = "com.t3tools.t3code";
 const CODEX = "com.openai.codex";
+const CLAUDE = "com.anthropic.claudefordesktop";
+const BUNDLES = { chatgpt: CODEX, claude: CLAUDE, codex: CODEX, t3code: T3 };
 function copy(element, name) {
   const ref = Ref();
   return $.AXUIElementCopyAttributeValue(element, $(name), ref) === 0 ? ref[0] : undefined;
@@ -78,11 +80,12 @@ function appKey(app) {
   if (app.isNil()) return null;
   const bundle = app.bundleIdentifier.isNil() ? "" : app.bundleIdentifier.js;
   if (bundle === T3) return "t3code";
+  if (bundle === CLAUDE) return "claude";
   if (bundle === CODEX) return isChatGPT(app) ? "chatgpt" : "codex";
   return null;
 }
 function runningPid(key) {
-  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(key === "t3code" ? T3 : CODEX);
+  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(BUNDLES[key]);
   for (let index = 0; index < apps.count; index += 1) {
     const app = apps.objectAtIndex(index);
     if (appKey(app) === key) return app.processIdentifier;

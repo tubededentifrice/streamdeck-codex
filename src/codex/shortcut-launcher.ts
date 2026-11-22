@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  APP_NAMES,
+  CLAUDE_BUNDLE_ID,
   CODEX_BUNDLE_ID,
+  frontAppWatcher,
   T3CODE_BUNDLE_ID,
   type AgentApp,
 } from "../apps/front-app-watcher";
@@ -17,6 +20,7 @@ type ShortcutCommand = Readonly<{
 
 type Execute = (file: string, args: readonly string[]) => Promise<void>;
 type ReadText = (file: string) => string;
+type TogglePanel = (panel: string) => Promise<void>;
 
 const SHORTCUT_COMMANDS: Readonly<Record<ShortcutId, ShortcutCommand>> =
   Object.freeze({
@@ -43,6 +47,16 @@ const T3_COMMANDS: Readonly<Partial<Record<ShortcutId, readonly string[]>>> =
     files: ["filePicker.toggle", "mod+p"],
     review: ["diff.toggle", "mod+d"],
     terminal: ["terminal.toggle", "mod+j"],
+  });
+
+// The Claude Code session tools that each shortcut toggles. Claude has no
+// side chat.
+const CLAUDE_PANELS: Readonly<Partial<Record<ShortcutId, string>>> =
+  Object.freeze({
+    browser: "Browser",
+    files: "Files",
+    review: "Changes",
+    terminal: "Terminal",
   });
 
 const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
@@ -133,12 +147,20 @@ export class ShortcutLauncher {
   readonly #execute: Execute;
   readonly #keybindingsPath: string;
   readonly #readText: ReadText;
+  readonly #togglePanel: TogglePanel;
 
   constructor(
     run: Execute = execute,
-    options: { keybindingsPath?: string; readText?: ReadText } = {},
+    options: {
+      keybindingsPath?: string;
+      readText?: ReadText;
+      togglePanel?: TogglePanel;
+    } = {},
   ) {
     this.#execute = run;
+    this.#togglePanel =
+      options.togglePanel ??
+      ((panel) => frontAppWatcher.runPanel({ app: "claude", panel }));
     this.#readText =
       options.readText ?? ((file) => fs.readFileSync(file, "utf8"));
     this.#keybindingsPath =
@@ -151,12 +173,12 @@ export class ShortcutLauncher {
   }
 
   async open(shortcut: ShortcutId, app: AgentApp = "codex"): Promise<void> {
+    const name = APP_NAMES[app];
+    if (app === "claude") return this.#openClaude(shortcut);
     const command =
       app === "t3code"
         ? this.#t3Command(shortcut)
         : SHORTCUT_COMMANDS[shortcut];
-    const name =
-      app === "t3code" ? "T3 Code" : app === "chatgpt" ? "ChatGPT" : "Codex";
     if (!command)
       throw new Error(`The selected ${name} shortcut is not available.`);
     const bundle = app === "t3code" ? T3CODE_BUNDLE_ID : CODEX_BUNDLE_ID;
@@ -174,6 +196,27 @@ export class ShortcutLauncher {
     } catch {
       throw new Error(
         `${name} could not run the shortcut. Check macOS Automation and Accessibility permissions for Stream Deck.`,
+      );
+    }
+  }
+
+  /**
+   * Claude has no keyboard commands for its session panels, so the key
+   * toggles the panel button through Accessibility and then shows Claude.
+   */
+  async #openClaude(shortcut: ShortcutId): Promise<void> {
+    const panel = CLAUDE_PANELS[shortcut];
+    if (!panel)
+      throw new Error("The selected Claude shortcut is not available.");
+    await this.#togglePanel(panel);
+    try {
+      await this.#execute("/usr/bin/osascript", [
+        "-e",
+        `tell application id "${CLAUDE_BUNDLE_ID}" to activate`,
+      ]);
+    } catch {
+      throw new Error(
+        "Claude could not come to the front. Check macOS Automation permissions for Stream Deck.",
       );
     }
   }

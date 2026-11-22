@@ -31,6 +31,11 @@
   chats through the local ChatGPT window with macOS Accessibility, in the same
   way as T3 Code. Follow the last frontmost app: ChatGPT, Codex desktop, or T3
   Code.
+- Support Claude for macOS chats and Claude Code sessions, including new
+  chats and sessions, and cloud sessions. Control them through the
+  local Claude window with macOS Accessibility, in the same way as T3 Code.
+  Follow the last frontmost app: ChatGPT, Claude, Codex desktop, or T3 Code.
+  Do not connect to Claude servers.
 - Store custom color presets in Stream Deck global plug-in settings. Keep the 16
   built-in presets immutable.
 - Treat a Codex desktop side chat as its parent task until the checks in

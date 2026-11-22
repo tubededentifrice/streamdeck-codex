@@ -128,4 +128,52 @@ describe("T3 Code shortcut launcher", () => {
   it.each(["mod+f13", "hyper+j", ""])("rejects the %s binding", (binding) => {
     expect(parseT3Binding(binding)).toBeUndefined();
   });
+
+  it.each([
+    ["review", "Changes"],
+    ["terminal", "Terminal"],
+    ["browser", "Browser"],
+    ["files", "Files"],
+  ] as const)("toggles the Claude %s panel", async (shortcut, panel) => {
+    const execute = vi.fn(async (file: string, args: readonly string[]) => {
+      void file;
+      void args;
+    });
+    const togglePanel = vi.fn(async () => undefined);
+    const launcher = new ShortcutLauncher(execute, { togglePanel });
+
+    await launcher.open(shortcut, "claude");
+
+    expect(togglePanel).toHaveBeenCalledWith(panel);
+    expect(execute).toHaveBeenCalledWith("/usr/bin/osascript", [
+      "-e",
+      'tell application id "com.anthropic.claudefordesktop" to activate',
+    ]);
+  });
+
+  it("has no Claude side chat", async () => {
+    const execute = vi.fn(async () => undefined);
+    const togglePanel = vi.fn(async () => undefined);
+    const launcher = new ShortcutLauncher(execute, { togglePanel });
+
+    await expect(launcher.open("side-chat", "claude")).rejects.toThrow(
+      "The selected Claude shortcut is not available.",
+    );
+    expect(togglePanel).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("does not show Claude when the panel is missing", async () => {
+    const execute = vi.fn(async () => undefined);
+    const launcher = new ShortcutLauncher(execute, {
+      togglePanel: async () => {
+        throw new Error("The Claude Changes panel is not available.");
+      },
+    });
+
+    await expect(launcher.open("review", "claude")).rejects.toThrow(
+      "The Claude Changes panel is not available.",
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
 });

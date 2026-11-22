@@ -415,6 +415,11 @@ describe("key renderer", () => {
       "T3 OFFLINE",
     ],
     [
+      new CodexError("offline", "Private.", { app: "claude" }),
+      "refresh",
+      "CLAUDE OFFLINE",
+    ],
+    [
       new CodexError("offline", "Private.", { app: "t3code" }),
       "update",
       "T3 OFFLINE",

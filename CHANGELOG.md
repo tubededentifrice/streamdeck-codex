@@ -4,6 +4,9 @@ This file records the user-visible changes in Codex Controls.
 
 ## Unreleased
 
+- Control Claude for macOS through its window: new and sent chats, Claude Code
+  sessions, and cloud sessions. Shortcut keys toggle the Claude Code session
+  panels.
 - Do not show a false CODEX OFFLINE error on setting keys when the plug-in
   starts with ChatGPT or T3 Code in front.
 - Add a Single Preset control. It sets one model and thinking level. It has a
