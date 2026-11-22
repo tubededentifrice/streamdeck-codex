@@ -32,7 +32,7 @@
   },
   "type": "module",
   "devDependencies": {
-    "@elgato/cli": "^1.9.0",
+    "@elgato/cli": "^1.10.5",
     "@eslint/js": "^10.0.1",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^15.2.2",
@@ -49,8 +49,8 @@
     "vitest": "^4.1.12"
   },
   "dependencies": {
-    "@elgato/streamdeck": "^2.1.2",
-    "@elgato/utils": "^0.6.0"
+    "@elgato/streamdeck": "^3.0.6",
+    "@elgato/utils": "^0.7.0"
   },
   "overrides": {
     "@elgato/utils": {
